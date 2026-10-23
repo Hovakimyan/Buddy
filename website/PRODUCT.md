@@ -4,3 +4,5 @@ Buddy is a Mac companion for Claude Code, displaying session state and permissio
 Audience: developers using Claude Code on macOS. Make the companion understandable through an interactive sample, then lead to source and installation instructions.
 
 User direction: replace the conventional landing page with a creative, interactive experience. Concept: a miniature leave-your-desk adventure: Mac session, request, optional phone handoff, visitor decision. Demonstrations must be identified as simulations. Preserve blue Block character and honest availability.
+
+Hosting: local-only. Do not publish to ChatGPT Sites or recreate a hosted site unless Sergey explicitly requests it.

@@ -25,8 +25,8 @@ the real iPhone link, the first-run setup window, the Move to Applications promp
 a real Mac have never run on a real Apple account or device;
 [`docs/releasing.md`](docs/releasing.md) lists what to verify on the first real run.
 
-**Marketing site.** The responsive landing page lives in [`website/dist/`](website/dist/) and has a
-[private preview](https://buddy-companion.hovakimyan-serg.chatgpt.site). It uses an illustrative product demo, not
+**Marketing site.** The responsive landing page lives in [`website/dist/`](website/dist/).
+It uses an illustrative product demo, not
 screenshots of a signed iCloud build. To view it locally, run `python3 -m http.server 8765 --directory website/dist`
 from the repository root and open `http://127.0.0.1:8765/`.
 
