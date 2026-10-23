@@ -29,8 +29,8 @@ public struct EngineSnapshot: Sendable, Equatable {
 /// by `PhoneBridge` (a validated phone decision). Expired or cancelled approvals print nothing, so
 /// Claude Code falls back to its own prompt. An approval is cancelled when its hook goes away, when
 /// the terminal answered it first (matching PostToolUse), or when a later event shows it was answered
-/// (PermissionRequest or PreToolUse of another call by the same asker, UserPromptSubmit, Stop,
-/// SessionEnd of the session). The asker is the session's main conversation or one of its subagents
+/// (PermissionRequest or PreToolUse of another call by the same asker; UserPromptSubmit or Stop for the
+/// main conversation's; SubagentStop for that subagent's; SessionEnd for all of the session's). The asker is the session's main conversation or one of its subagents
 /// (`agent_id`): subagents run in parallel, so one moving on says nothing about another's request.
 ///
 /// Questions follow the same rules. An ask (a PreToolUse of `AskUserQuestion` from the `--ask` relay)
@@ -43,15 +43,19 @@ public actor BuddyEngine {
         case stopped, running, stopping
     }
 
-    /// How long an approval stays open by default. Deliberately a few seconds under the relay's
-    /// own wait (`HookClient.defaultWaitTimeout`, 110 s): a decision is only accepted while the
-    /// approval is open, so one landing in the last moments can still reach a hook that is
+    /// How long an approval stays open by default: 10 minutes, Claude Code's own default hook
+    /// timeout, so a person who steps away can still answer from the iPhone. The terminal shows its
+    /// own prompt meanwhile, so the wait never blocks it. Deliberately a few seconds under the
+    /// relay's own wait (`HookClient.defaultWaitTimeout`, 610 s): a decision is only accepted while
+    /// the approval is open, so one landing in the last moments can still reach a hook that is
     /// waiting, instead of being accepted but undeliverable.
-    public static let defaultApprovalTimeout: TimeInterval = 105
+    public static let defaultApprovalTimeout: TimeInterval = 600
 
-    /// How long a question stays open by default: under the relay's own wait for an ask
-    /// (`HookClient.askWaitTimeout`, 125 s), for the same reason as `defaultApprovalTimeout`.
-    public static let defaultQuestionTimeout: TimeInterval = 120
+    /// How long a question stays open by default: 10 minutes like an approval, under the relay's
+    /// own wait for an ask (`HookClient.askWaitTimeout`, 610 s), for the same reason as
+    /// `defaultApprovalTimeout`. The terminal shows no prompt while an ask waits; "Answer in
+    /// terminal" (or Escape on the open island) hands it back at once.
+    public static let defaultQuestionTimeout: TimeInterval = 600
 
     /// Tools whose permission request is never shown on the card or the phone. Questions are
     /// answered through the ask hook instead, before any permission request.
@@ -343,10 +347,21 @@ public actor BuddyEngine {
                 }
                 if let question { await questionQueue.cancel(requestId: question.id) }
             }
-        case .stop, .stopFailure, .sessionEnd, .userPromptSubmit:
-            // The turn ended or a new prompt was typed: every request of the session was answered.
+        case .sessionEnd:
+            // The session is gone: nobody waits on any of its requests.
             await queue.cancel(sessionId: event.sessionId)
             await questionQueue.cancel(sessionId: event.sessionId)
+        case .stop, .stopFailure, .userPromptSubmit:
+            // The main turn ended or a new prompt was typed: the main conversation's requests were answered.
+            // Background subagents can outlive the turn, and their open requests still wait in the terminal.
+            await queue.cancel(sessionId: event.sessionId, agentId: nil)
+            await questionQueue.cancel(sessionId: event.sessionId, agentId: nil)
+        case .subagentStop:
+            // The subagent finished: nothing of its is waiting any more.
+            if let agentId = event.agentId {
+                await queue.cancel(sessionId: event.sessionId, agentId: agentId)
+                await questionQueue.cancel(sessionId: event.sessionId, agentId: agentId)
+            }
         case .preToolUse:
             if event.isAsk, event.toolName == Self.askTool {
                 return await requestAnswer(for: event)
@@ -367,7 +382,7 @@ public actor BuddyEngine {
                 $0.sessionId == event.sessionId && $0.agentId == event.agentId && $0.questions != asked
             }
             for question in staleQuestions { await questionQueue.cancel(requestId: question.id) }
-        case .sessionStart, .notification:
+        case .sessionStart, .notification, .subagentStart:
             break
         }
         // Applied after the queue work, so a snapshot showing this event also reflects it.

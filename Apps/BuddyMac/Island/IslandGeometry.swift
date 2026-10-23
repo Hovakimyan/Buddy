@@ -49,6 +49,8 @@ enum IslandLayout {
     static let focusCharacterSize: CGFloat = 44
     static let pillHeight: CGFloat = 24
     static let pillSpacing: CGFloat = 6
+    /// The focused session's subagents: one row of chips under it (`IslandLogic.maxAgentChips` and "+N").
+    static let agentStripHeight: CGFloat = 20
     /// The pill's character, the size the character contract names for pills.
     static let pillCharacterSize: CGFloat = 12
     static let bottomPadding: CGFloat = 10
@@ -96,6 +98,8 @@ struct IslandContent: Equatable, Sendable {
     /// Sessions besides the focused one (the pill row shows when there is at least one).
     var otherSessions: Int
     var card: Card
+    /// The focused session's running subagents (the agent strip shows when there is at least one).
+    var agents = 0
 }
 
 enum IslandGeometry {
@@ -157,6 +161,7 @@ enum IslandGeometry {
             return CGSize(width: placement.notchWidth + IslandLayout.compactExtraWidth, height: placement.barHeight)
         case .expanded:
             var height = placement.barHeight + IslandLayout.focusHeight + IslandLayout.bottomPadding
+            if content.agents > 0 { height += IslandLayout.agentStripHeight + IslandLayout.pillSpacing }
             if content.otherSessions > 0 { height += IslandLayout.pillHeight + IslandLayout.pillSpacing }
             switch content.card {
             case .none: break
@@ -170,9 +175,10 @@ enum IslandGeometry {
 
     /// The most a question or plan card can be tall in the expanded island: what `questionMaxHeight` leaves under the
     /// header, the focused session and the pills. The card is drawn at its wanted height up to this, and scrolls inside.
-    static func cardRoom(placement: IslandPlacement, otherSessions: Int) -> CGFloat {
+    static func cardRoom(placement: IslandPlacement, otherSessions: Int, agents: Int = 0) -> CGFloat {
         let above = panelSize(
-            mode: .expanded, content: IslandContent(otherSessions: otherSessions, card: .none), placement: placement)
+            mode: .expanded, content: IslandContent(otherSessions: otherSessions, card: .none, agents: agents),
+            placement: placement)
         return max(0, IslandLayout.questionMaxHeight - above.height - IslandLayout.cardSpacing)
     }
 

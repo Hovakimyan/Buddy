@@ -74,7 +74,7 @@ private func printed(_ result: HookProcess.Result) -> String {
 }
 
 /// A hook that finished without printing anything and with exit status 0, well before its own
-/// 110 s reply wait (the 10 s bound also absorbs process start-up on a loaded machine).
+/// 610 s reply wait (the 10 s bound also absorbs process start-up on a loaded machine).
 private func expectSilent(_ result: HookProcess.Result, sourceLocation: SourceLocation = #_sourceLocation) {
     #expect(!result.killed, "hook was still waiting", sourceLocation: sourceLocation)
     #expect(result.status == 0, sourceLocation: sourceLocation)

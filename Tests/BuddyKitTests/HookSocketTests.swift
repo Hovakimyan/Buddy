@@ -961,9 +961,9 @@ private func mode(of url: URL) -> mode_t? {
         }
     }
 
-    @Test func askWaitTimeoutsDefaultTo125ForAnAskAnd110ForAPermissionRequest() {
-        #expect(HookClient.askWaitTimeout == 125)
-        #expect(HookClient.defaultWaitTimeout == 110)
+    @Test func askWaitTimeoutsDefaultTo610ForAnAskAnd610ForAPermissionRequest() {
+        #expect(HookClient.askWaitTimeout == 610)
+        #expect(HookClient.defaultWaitTimeout == 610)
     }
 
     @Test func multilineStdinPayloadStillRoundTrips() async throws {

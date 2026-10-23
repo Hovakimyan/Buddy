@@ -11,13 +11,18 @@ public struct SessionRecord: Codable, Sendable, Equatable {
     public var project: String
     public var lastTool: String?
     public var updatedAt: Date
+    /// Subagents running in the session now (`Session.agents`); the phone shows the count only.
+    public var agentCount: Int
 
-    public init(sessionId: String, state: SessionState, project: String, lastTool: String?, updatedAt: Date) {
+    public init(
+        sessionId: String, state: SessionState, project: String, lastTool: String?, updatedAt: Date, agentCount: Int = 0
+    ) {
         self.sessionId = sessionId
         self.state = state
         self.project = project
         self.lastTool = lastTool
         self.updatedAt = updatedAt
+        self.agentCount = agentCount
     }
 }
 

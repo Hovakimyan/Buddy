@@ -362,9 +362,54 @@ extension IslandLogic {
             quietFor: quietFor, islandVisible: visible)
     }
 
+    // MARK: Subagents
+
+    /// Subagent chips shown under the focused session; the rest is counted as "+N".
+    static let maxAgentChips = 3
+
+    /// One running subagent on the agent strip: its kind and current tool ("Explore · Read"), and whether it waits
+    /// on a permission.
+    struct AgentChip: Equatable, Identifiable {
+        let id: String
+        let label: String
+        let waiting: Bool
+    }
+
+    /// The focused session's subagents as chips, in the order they started, at most `maxAgentChips`, and how many more
+    /// there are. Their kind and tool come from the hook payload, so they are sanitized for display.
+    static func agentChips(of session: Session?) -> (chips: [AgentChip], overflow: Int) {
+        let agents = session?.agents ?? []
+        let chips = agents.prefix(maxAgentChips).map { agent in
+            let name = agent.type ?? "Agent"
+            let label = agent.lastTool.map { "\(name) · \($0)" } ?? name
+            return AgentChip(id: agent.id, label: oneLine(label), waiting: agent.state == .waiting)
+        }
+        return (chips, agents.count - chips.count)
+    }
+
+    /// Who asks on a card: nil for the main conversation, otherwise "<type> agent", or "Subagent" when the kind is
+    /// unknown (Buddy did not see it start).
+    static func asker(agentId: String?, sessionId: String, sessions: [Session]) -> String? {
+        guard let agentId else { return nil }
+        let type = sessions.first { $0.id == sessionId }?.agents.first { $0.id == agentId }?.type
+        return type.map { oneLine("\($0) agent") } ?? "Subagent"
+    }
+
+    /// How many subagents the main conversation waits on: its turn ended while they still run. Zero otherwise.
+    static func awaitedAgents(_ session: Session?) -> Int {
+        guard let session, session.awaitingAgents else { return 0 }
+        return session.agents.count
+    }
+
+    /// Sanitized and kept on one line.
+    private static func oneLine(_ text: String) -> String {
+        DisplayText.sanitized(text).replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\t", with: " ")
+    }
+
     /// The short status beside the notch in the compact island.
-    static func statusWord(_ state: CharacterState, pendingCount: Int) -> String {
+    static func statusWord(_ state: CharacterState, pendingCount: Int, awaitingAgents: Int = 0) -> String {
         if pendingCount > 0 { return "\(pendingCount) waiting" }
+        if awaitingAgents > 0 { return "Waiting on \(awaitingAgents) " + (awaitingAgents == 1 ? "agent" : "agents") }
         switch state {
         case .idle: return "Idle"
         case .working: return "Working"

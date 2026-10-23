@@ -222,6 +222,20 @@ import Testing
         #expect(IslandGeometry.cardRoom(placement: p, otherSessions: 0) > room)
     }
 
+    /// The focused session's subagents add one strip under it, whatever their number; it shrinks the card's room.
+    @Test func agentStripAddsOneRow() {
+        let p = IslandGeometry.placement(for: notched)
+        let plain = IslandGeometry.panelSize(
+            mode: .expanded, content: IslandContent(otherSessions: 1, card: .none), placement: p)
+        for agents in [1, 3, 7] {
+            let withAgents = IslandGeometry.panelSize(
+                mode: .expanded, content: IslandContent(otherSessions: 1, card: .none, agents: agents), placement: p)
+            #expect(withAgents.height == plain.height + IslandLayout.agentStripHeight + IslandLayout.pillSpacing)
+        }
+        #expect(IslandGeometry.cardRoom(placement: p, otherSessions: 1, agents: 2)
+            == IslandGeometry.cardRoom(placement: p, otherSessions: 1) - IslandLayout.agentStripHeight - IslandLayout.pillSpacing)
+    }
+
     @Test func hiddenHasNoPanelAndRestsAsTheNotch() {
         let p = IslandGeometry.placement(for: notched)
         #expect(size(.hidden, others: 3, p) == .zero)

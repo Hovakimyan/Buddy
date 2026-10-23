@@ -19,6 +19,14 @@ import Testing
         #expect(event?.message == nil)
     }
 
+    @Test func parsesTheTranscriptPathLoosely() {
+        let payload = #"{"session_id":"abc","hook_event_name":"Stop","transcript_path":"/Users/me/.claude/projects/-p/abc.jsonl"}"#
+        #expect(HookEvent.parse(data(payload))?.transcriptPath == "/Users/me/.claude/projects/-p/abc.jsonl")
+        let odd = HookEvent.parse(data(#"{"session_id":"abc","hook_event_name":"Stop","transcript_path":7}"#))
+        #expect(odd?.name == .stop)
+        #expect(odd?.transcriptPath == nil)
+    }
+
     @Test func parsesTheSubagentId() {
         let payload = """
         {"session_id":"abc","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{},

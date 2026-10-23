@@ -109,6 +109,9 @@ private struct SessionRow: View {
                 HStack(spacing: 4) {
                     Text(session.state.label)
                     if let tool = session.lastTool { Text("· " + DisplayText.sanitized(tool)) }
+                    if session.agentCount > 0 {
+                        Text("· \(session.agentCount) " + (session.agentCount == 1 ? "agent" : "agents"))
+                    }
                     Text("· " + session.updatedAt.formatted(.relative(presentation: .named)))
                 }
                 .font(.caption)

@@ -315,7 +315,7 @@ private func withEngine(
             #expect(approval.toolName == "Bash")
             #expect(approval.toolInput == bash("git status"))
             #expect(approval.summary.text == "git status")
-            #expect(approval.expiresAt == approval.createdAt.addingTimeInterval(105))
+            #expect(approval.expiresAt == approval.createdAt.addingTimeInterval(600))
 
             let waiting = await rig.snapshot { $0.sessions.first?.state == .waiting }
             #expect(waiting != nil)
@@ -368,8 +368,8 @@ private func withEngine(
     }
 
     @Test func defaultApprovalTimeoutEndsBeforeTheRelayStopsWaiting() {
-        #expect(BuddyEngine.defaultApprovalTimeout == 105)
-        #expect(HookClient.defaultWaitTimeout == 110)
+        #expect(BuddyEngine.defaultApprovalTimeout == 600)
+        #expect(HookClient.defaultWaitTimeout == 610)
         #expect(BuddyEngine.defaultApprovalTimeout < HookClient.defaultWaitTimeout)
     }
 
@@ -590,6 +590,43 @@ private func withEngine(
         }
     }
 
+    @Test func backgroundSubagentRequestSurvivesTheMainTurnEnding() async throws {
+        // Background subagents outlive the main turn: Claude Code sends Stop (and may submit the next prompt) while
+        // one of them still waits on a permission request. That request is still open in the terminal.
+        try await withEngine { rig in
+            let client = startClient(
+                eventJSON("PermissionRequest", tool: "Bash", input: bash("a"), agent: "agent-1"), path: rig.path)
+            let approval = try #require(await rig.pending(count: 1).first)
+            await send(eventJSON("Stop"), path: rig.path)
+            await send(eventJSON("UserPromptSubmit"), path: rig.path)
+            await send(eventJSON("StopFailure"), path: rig.path)
+            #expect(await rig.pending(count: 1).map(\.id) == [approval.id])
+            #expect(await rig.engine.decide(requestId: approval.id, .allow))
+            #expect(await within(client) == ClientResult(output: allowOutput))
+        }
+    }
+
+    @Test func subagentStopCancelsOnlyThatSubagentsRequests() async throws {
+        try await withEngine { rig in
+            let gone = startClient(
+                eventJSON("PermissionRequest", tool: "Bash", input: bash("a"), agent: "agent-1"), path: rig.path)
+            let stays = startClient(
+                eventJSON("PermissionRequest", tool: "Bash", input: bash("b"), agent: "agent-2"), path: rig.path)
+            let approvals = await rig.pending(count: 2)
+            let keep = try #require(approvals.first { $0.agentId == "agent-2" })
+            let asked = startClient(askJSON(agent: "agent-1"), path: rig.path, ask: true)
+            let question = try #require(await rig.questions(count: 1).first)
+
+            await send(eventJSON("SubagentStop", agent: "agent-1"), path: rig.path)
+            #expect(await within(gone) == ClientResult(output: nil))
+            #expect(await within(asked) == ClientResult(output: nil))
+            #expect(await rig.engine.questionOutcome(for: question.id) == .cancelled)
+            #expect(await rig.pending(count: 1).map(\.id) == [keep.id])
+            #expect(await rig.engine.decide(requestId: keep.id, .deny))
+            #expect(await within(stays) == ClientResult(output: denyOutput))
+        }
+    }
+
     @Test func stopAndStopFailureCancelOnlyThatSession() async throws {
         try await withEngine { rig in
             for (event, session) in [("Stop", "a"), ("StopFailure", "b")] {
@@ -669,7 +706,7 @@ private func withEngine(
             #expect(question.sessionId == "s1")
             #expect(question.agentId == nil)
             #expect(question.questions == AskQuestion.parseSet(toolInput: askInput()))
-            #expect(question.expiresAt == question.createdAt.addingTimeInterval(120))
+            #expect(question.expiresAt == question.createdAt.addingTimeInterval(600))
             // A question is not an approval: nothing for the approval card or the phone.
             #expect(await rig.snapshot { _ in true }?.pending == [])
 
@@ -843,17 +880,17 @@ private func withEngine(
         }
     }
 
-    @Test func questionExpiresAt120s() async throws {
-        #expect(BuddyEngine.defaultQuestionTimeout == 120)
+    @Test func questionExpiresAt600s() async throws {
+        #expect(BuddyEngine.defaultQuestionTimeout == 600)
         #expect(BuddyEngine.defaultQuestionTimeout < HookClient.askWaitTimeout)
         let clock = TestClock(Date(timeIntervalSince1970: 1_800_000_000))
         // The timer never fires during the test, so only `answer` itself can notice the expiry.
         try await withEngine(clock: { clock.now }, tickInterval: 1_000_000) { rig in
             let client = startClient(askJSON(), path: rig.path, ask: true)
             let question = try #require(await rig.questions(count: 1).first)
-            #expect(question.expiresAt == question.createdAt.addingTimeInterval(120))
+            #expect(question.expiresAt == question.createdAt.addingTimeInterval(600))
 
-            clock.advance(by: 119)
+            clock.advance(by: 599)
             #expect(await rig.engine.answer(requestId: question.id, [.options(["Green"])]) == false)
             #expect(await rig.questions(count: 1).map(\.id) == [question.id])
 
@@ -890,7 +927,8 @@ private func withEngine(
 
             // A parallel subagent moving on, and another session ending, say nothing about this asker.
             await send(eventJSON("PreToolUse", tool: "Read", input: bash("x"), agent: "agent-1"), path: rig.path)
-            #expect(await rig.snapshot { $0.sessions.first?.lastTool == "Read" } != nil)
+            #expect(await rig.snapshot { $0.sessions.first?.agents.first?.lastTool == "Read" } != nil)
+            #expect(await rig.snapshot { _ in true }?.sessions.first?.lastTool == "AskUserQuestion")
             await send(eventJSON("Stop", session: "other"), path: rig.path)
             #expect(await rig.snapshot { $0.sessions.contains { $0.id == "other" } } != nil)
             // The terminal finishing another AskUserQuestion call is not this one.

@@ -17,6 +17,8 @@ struct ApprovalCardView: View {
     var accent: Color?
     /// How many cards wait in all; above one the header shows "1/N" (this card is the front one).
     var queueCount = 1
+    /// The subagent asking ("Explore agent"); nil for the main conversation.
+    var asker: String?
 
     private var canAllow: Bool { IslandLogic.canAllow(approval) }
     private var allowLive: Bool { canAllow && armed }
@@ -27,6 +29,10 @@ struct ApprovalCardView: View {
                 Text(approval.toolName).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.tail)
                 if let project {
                     Text(project).font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                }
+                if let asker {
+                    Text("· " + asker).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1).truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
                 if queueCount > 1 {

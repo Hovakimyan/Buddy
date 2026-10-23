@@ -46,6 +46,8 @@ enum CloudKitSchema {
         static let sessionId = "sessionId"
         static let state = "state"
         static let updatedAt = "updatedAt"
+        /// Int64, Session only: how many subagents run (not sensitive, so plain). Absent on older Macs' records.
+        static let agentCount = "agentCount"
         static let requestId = "requestId"
         static let status = "status"
         static let createdAt = "createdAt"
@@ -146,6 +148,8 @@ extension CKRecord {
         self[K.sessionId] = session.sessionId
         self[K.state] = session.state.rawValue
         self[K.updatedAt] = session.updatedAt
+        // Always written, 0 included, so a count that drops to none clears the old one.
+        self[K.agentCount] = Int64(session.agentCount)
         encryptedValues[K.project] = session.project
         // Saved with `.allKeys`, which overwrites the keys present here but does NOT clear keys absent from
         // this record: once a server-side `lastTool` exists, a later nil `lastTool` leaves the old value.
@@ -272,9 +276,17 @@ extension SessionRecord {
         case .value(let value): lastTool = value
         case .wrongType: return nil
         }
+        let agentCount: Int
+        switch record.plain(K.agentCount, as: Int64.self) {
+        case .absent: agentCount = 0
+        case .value(let value) where value >= 0 && value <= Int64(Int32.max): agentCount = Int(value)
+        case .value, .wrongType: return nil
+        }
         // A plain `project` key means the writer did not use encrypted values.
         if record[K.project] != nil || record[K.lastTool] != nil { return nil }
-        self.init(sessionId: sessionId, state: state, project: project, lastTool: lastTool, updatedAt: updatedAt)
+        self.init(
+            sessionId: sessionId, state: state, project: project, lastTool: lastTool, updatedAt: updatedAt,
+            agentCount: agentCount)
     }
 }
 

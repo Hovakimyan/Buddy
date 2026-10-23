@@ -51,8 +51,8 @@ import Testing
     }
 
     @Test func eventsAreAllTenHookEvents() {
-        #expect(ClaudeSettingsInstaller.events.count == 10)
-        #expect(Set(ClaudeSettingsInstaller.events.map(\.rawValue)).count == 10)
+        #expect(ClaudeSettingsInstaller.events.count == 12)
+        #expect(Set(ClaudeSettingsInstaller.events.map(\.rawValue)).count == 12)
     }
 
     @Test func missingFileCreatesAllEventsOnce() throws {
@@ -79,13 +79,13 @@ import Testing
         }
     }
 
-    @Test func permissionRequestHasTimeout120OthersTimeout5() throws {
+    @Test func permissionRequestHasTimeout620OthersTimeout5() throws {
         let plan = try ClaudeSettingsInstaller.planInstall(existing: nil, hookCommand: command)
         for event in ClaudeSettingsInstaller.events {
             let hook = try #require(try buddyHooks(plan.newData, event).first)
             #expect(hook["type"] as? String == "command")
             #expect(hook["command"] as? String == command)
-            #expect(hook["timeout"] as? Int == (event == .permissionRequest ? 120 : 5), "\(event)")
+            #expect(hook["timeout"] as? Int == (event == .permissionRequest ? 620 : 5), "\(event)")
         }
     }
 
@@ -416,7 +416,7 @@ import Testing
         let ask = try #require(try askGroup(plan.newData))
         let expected: [String: Any] = [
             "matcher": "AskUserQuestion",
-            "hooks": [["type": "command", "command": command + " --ask", "timeout": 130] as [String: Any]],
+            "hooks": [["type": "command", "command": command + " --ask", "timeout": 620] as [String: Any]],
         ]
         #expect(NSDictionary(dictionary: ask).isEqual(to: expected))
         // The `*` group is separate and keeps the plain command.
@@ -448,7 +448,25 @@ import Testing
 
         let plan = try ClaudeSettingsInstaller.planInstall(existing: stale, hookCommand: command)
         #expect(plan.changed)
-        #expect(try buddyHooks(plan.newData, .permissionRequest).first?["timeout"] as? Int == 120)
+        #expect(try buddyHooks(plan.newData, .permissionRequest).first?["timeout"] as? Int == 620)
+    }
+
+    @Test func installRewritesTwoMinuteTimeoutsOfThePreviousVersion() throws {
+        var root = try object(try ClaudeSettingsInstaller.planInstall(existing: nil, hookCommand: command).newData)
+        var hooks = try #require(root["hooks"] as? [String: Any])
+        hooks["PermissionRequest"] = [["matcher": "*", "hooks": [["type": "command", "command": command, "timeout": 120]]]]
+        hooks["PreToolUse"] = [
+            ["matcher": "*", "hooks": [["type": "command", "command": command, "timeout": 5]]],
+            ["matcher": "AskUserQuestion", "hooks": [["type": "command", "command": command + " --ask", "timeout": 130]]],
+        ]
+        root["hooks"] = hooks
+        let stale = try JSONSerialization.data(withJSONObject: root)
+
+        let plan = try ClaudeSettingsInstaller.planInstall(existing: stale, hookCommand: command)
+        #expect(plan.changed)
+        #expect(try buddyHooks(plan.newData, .permissionRequest).first?["timeout"] as? Int == 620)
+        let ask = try #require(try askGroup(plan.newData))
+        #expect((ask["hooks"] as? [[String: Any]])?.first?["timeout"] as? Int == 620)
     }
 
     @Test func installRepairsDuplicateAskHooks() throws {

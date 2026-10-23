@@ -155,7 +155,8 @@ public actor PhoneBridge {
                 state: session.state,
                 project: session.project,
                 lastTool: session.lastTool,
-                updatedAt: session.updatedAt)
+                updatedAt: session.updatedAt,
+                agentCount: session.agents.count)
             // Skips syncs that carry no new event: activity/recentTools-only changes keep the same
             // `updatedAt` (every store event bumps it), so the phone-visible record is equal.
             guard publishedSessions[session.id] != record else { continue }
@@ -170,10 +171,11 @@ public actor PhoneBridge {
         }
     }
 
-    /// Asks the transport to delete records older than 10 minutes. Best effort: a failure is
-    /// ignored because the next `cleanup` retries the same deletion.
+    /// Asks the transport to delete records older than 20 minutes: well past the longest wait (an
+    /// approval or a question stays open 10 minutes), so a record still pending is never deleted.
+    /// Best effort: a failure is ignored because the next `cleanup` retries the same deletion.
     public func cleanup() async {
-        try? await transport.deleteRecords(olderThan: clock().addingTimeInterval(-600))
+        try? await transport.deleteRecords(olderThan: clock().addingTimeInterval(-1200))
     }
 
     // MARK: Queue -> phone

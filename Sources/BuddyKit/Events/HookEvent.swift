@@ -11,6 +11,8 @@ public enum HookEventName: String, Sendable {
     case stopFailure = "StopFailure"
     case sessionEnd = "SessionEnd"
     case permissionRequest = "PermissionRequest"
+    case subagentStart = "SubagentStart"
+    case subagentStop = "SubagentStop"
 }
 
 /// One Claude Code hook invocation, decoded from the JSON the hook receives on stdin.
@@ -21,6 +23,9 @@ public struct HookEvent: Sendable, Equatable {
     public let sessionId: String
     public let name: HookEventName
     public let cwd: String?
+    /// The main conversation's transcript (`transcript_path`), also on subagents' events. Its folder name is the
+    /// folder Claude Code was started in, encoded; nil when absent.
+    public let transcriptPath: String?
     public let toolName: String?
     public let toolInput: JSONValue?
     public let message: String?
@@ -29,6 +34,8 @@ public struct HookEvent: Sendable, Equatable {
     /// Which subagent made a tool call (`agent_id`); nil for the main conversation. Subagents of one session
     /// run in parallel and share its `session_id`, so this tells their requests apart.
     public let agentId: String?
+    /// The kind of subagent (`agent_type`, such as `Explore`); nil for the main conversation and when absent.
+    public let agentType: String?
     /// Set by the `buddy-hook --ask` relay (top-level `"buddy_ask": true`) on the `AskUserQuestion`
     /// call it waits on. Anything else, including a non-boolean value, is false.
     public let isAsk: Bool
@@ -37,21 +44,25 @@ public struct HookEvent: Sendable, Equatable {
         sessionId: String,
         name: HookEventName,
         cwd: String? = nil,
+        transcriptPath: String? = nil,
         toolName: String? = nil,
         toolInput: JSONValue? = nil,
         message: String? = nil,
         notificationType: String? = nil,
         agentId: String? = nil,
+        agentType: String? = nil,
         isAsk: Bool = false
     ) {
         self.sessionId = sessionId
         self.name = name
         self.cwd = cwd
+        self.transcriptPath = transcriptPath
         self.toolName = toolName
         self.toolInput = toolInput
         self.message = message
         self.notificationType = notificationType
         self.agentId = agentId
+        self.agentType = agentType
         self.isAsk = isAsk
     }
 
@@ -71,12 +82,16 @@ public struct HookEvent: Sendable, Equatable {
         let sessionId: String
         let hookEventName: String
         let cwd: String?
+        /// Decoded loosely like `agentId`.
+        let transcriptPath: JSONValue?
         let toolName: String?
         let toolInput: JSONValue?
         let message: String?
         let notificationType: String?
         /// Decoded loosely: an `agent_id` of an unexpected type is ignored rather than failing the event.
         let agentId: JSONValue?
+        /// Decoded loosely like `agentId`.
+        let agentType: JSONValue?
         /// Decoded loosely like `agentId`: only the boolean `true` counts.
         let buddyAsk: JSONValue?
 
@@ -84,11 +99,13 @@ public struct HookEvent: Sendable, Equatable {
             case sessionId = "session_id"
             case hookEventName = "hook_event_name"
             case cwd
+            case transcriptPath = "transcript_path"
             case toolName = "tool_name"
             case toolInput = "tool_input"
             case message
             case notificationType = "notification_type"
             case agentId = "agent_id"
+            case agentType = "agent_type"
             case buddyAsk = "buddy_ask"
         }
     }
@@ -108,11 +125,13 @@ public struct HookEvent: Sendable, Equatable {
             sessionId: payload.sessionId,
             name: name,
             cwd: payload.cwd,
+            transcriptPath: { if case .string(let path)? = payload.transcriptPath, !path.isEmpty { path } else { nil } }(),
             toolName: payload.toolName,
             toolInput: payload.toolInput,
             message: payload.message,
             notificationType: payload.notificationType,
             agentId: { if case .string(let id)? = payload.agentId { id } else { nil } }(),
+            agentType: { if case .string(let type)? = payload.agentType, !type.isEmpty { type } else { nil } }(),
             isAsk: payload.buddyAsk == .bool(true)
         )
     }

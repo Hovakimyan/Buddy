@@ -38,7 +38,7 @@ import Testing
         #expect(result.stdout.isEmpty)
         // Wall clock here includes spawning the process (dyld, runtime start-up), which can take
         // several seconds on a cold build or while the machine runs the rest of the suite, so
-        // this is only a "does not hang" bound (the real hang would be the 110 s reply wait).
+        // this is only a "does not hang" bound (the real hang would be the 610 s reply wait).
         // The strict "well inside 300 ms" property is pinned in-process by
         // `HookSocketTests.noServerReturnsNilWithin300ms`, which times `HookClient.run` alone.
         #expect(result.elapsed < 10)

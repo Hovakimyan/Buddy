@@ -143,7 +143,7 @@ struct QuestionView: View {
                 }
                 .controlSize(.large)
 
-                Text("If you don't answer in about 2 minutes, Claude asks in the terminal.")
+                Text("If you don't answer in about 10 minutes, Claude asks in the terminal.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             .padding()

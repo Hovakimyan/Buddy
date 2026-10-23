@@ -10,11 +10,11 @@ public enum HookClient: Sendable {
     /// How long a `PermissionRequest` waits for the app's reply by default. The app's own approval
     /// timeout (`BuddyEngine.defaultApprovalTimeout`) is shorter, so an approval always ends on
     /// the app's side first and a decision that is accepted can still be delivered.
-    public static let defaultWaitTimeout: TimeInterval = 110
+    public static let defaultWaitTimeout: TimeInterval = 610
 
     /// How long an ask (`--ask` on an `AskUserQuestion` call) waits by default. The engine closes a
-    /// question after 120 s, so the app's own end comes first here too.
-    public static let askWaitTimeout: TimeInterval = 125
+    /// question after 600 s, so the app's own end comes first here too.
+    public static let askWaitTimeout: TimeInterval = 610
 
     /// Forwards `input` (the hook JSON from stdin) to the app listening on `socketPath`.
     ///

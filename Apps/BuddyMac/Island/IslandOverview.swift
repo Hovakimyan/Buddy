@@ -1,8 +1,8 @@
 import BuddyKit
 import SwiftUI
 
-/// The expanded island: the header (mute, settings, close), the focused session with the character, the other
-/// sessions as pills, and under them the front card (an approval, a plan or a question, oldest first) or a status
+/// The expanded island: the header (mute, settings, close), the focused session with the character, its running
+/// subagents as a strip of chips, the other sessions as pills, and under them the front card (an approval, a plan or a question, oldest first) or a status
 /// card. Its height is what
 /// `IslandGeometry.panelSize` reserves for the same content.
 struct IslandOverview: View {
@@ -18,6 +18,13 @@ struct IslandOverview: View {
                 .frame(height: ui.placement.barHeight)
             FocusedSessionView(session: focused, ui: ui, pendingCount: feed.pending.count + feed.questions.count)
                 .frame(height: IslandLayout.focusHeight)
+            let agents = IslandLogic.agentChips(of: focused)
+            if !agents.chips.isEmpty {
+                AgentStrip(chips: agents.chips, overflow: agents.overflow, accent: ui.accent, reduceMotion: ui.reduceMotion)
+                    .frame(height: IslandLayout.agentStripHeight)
+                    .padding(.top, IslandLayout.pillSpacing)
+                    .padding(.horizontal, IslandLayout.sidePadding + 4)
+            }
             if !others.isEmpty {
                 HStack(spacing: IslandLayout.pillSpacing) {
                     ForEach(others, id: \.id) { session in
@@ -44,7 +51,8 @@ struct IslandOverview: View {
 
     @ViewBuilder private func card(focused: Session?) -> some View {
         let room = IslandGeometry.cardRoom(
-            placement: ui.placement, otherSessions: IslandLogic.otherSessions(feed.sessions, focused: focused?.id).count)
+            placement: ui.placement, otherSessions: IslandLogic.otherSessions(feed.sessions, focused: focused?.id).count,
+            agents: focused?.agents.count ?? 0)
         switch IslandLogic.frontCard(pending: feed.pending, questions: feed.questions) {
         case .approval(let approval):
             approvalCard(approval, room: room)
@@ -57,6 +65,7 @@ struct IslandOverview: View {
             let model = ui.questionCard.flatMap { $0.id == question.id ? $0 : nil } ?? QuestionCardModel(question: question)
             QuestionCardView(
                 model: model, height: min(model.naturalHeight, room), armed: ui.armedRequest == question.id,
+                asker: IslandLogic.asker(agentId: question.agentId, sessionId: question.sessionId, sessions: feed.sessions),
                 onEvent: ui.onQuestion,
                 otherText: Binding(
                     get: { ui.questionCard?.otherText ?? "" },
@@ -77,7 +86,8 @@ struct IslandOverview: View {
             ApprovalCardView(
                 approval: approval, project: project, armed: ui.armedRequest == approval.id,
                 onChoice: { ui.onChoice(approval, $0) }, accent: ui.accent,
-                queueCount: IslandLogic.queueCount(pending: feed.pending, questions: feed.questions))
+                queueCount: IslandLogic.queueCount(pending: feed.pending, questions: feed.questions),
+                asker: IslandLogic.asker(agentId: approval.agentId, sessionId: approval.sessionId, sessions: feed.sessions))
         case .plan:
             PlanCardView(
                 approval: approval, height: min(PlanCardView.naturalHeight(for: approval), room),
@@ -169,12 +179,52 @@ private struct FocusedSessionView: View {
                 RecentToolsRow(tools: session.map(IslandLogic.recentTools(of:)) ?? [], reduceMotion: ui.reduceMotion)
             }
             Spacer(minLength: 0)
-            Text(IslandLogic.statusWord(ui.face.state, pendingCount: pendingCount))
+            Text(IslandLogic.statusWord(
+                ui.face.state, pendingCount: pendingCount, awaitingAgents: IslandLogic.awaitedAgents(session)))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ui.accent)
                 .lineLimit(1)
         }
         .padding(.horizontal, IslandLayout.sidePadding + 4)
+    }
+}
+
+/// The focused session's subagents: one chip per agent ("Explore · Read"), oldest first, then "+N". A chip whose agent
+/// waits on a permission is drawn in the accent.
+private struct AgentStrip: View {
+    let chips: [IslandLogic.AgentChip]
+    let overflow: Int
+    let accent: Color
+    let reduceMotion: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.turn.down.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.45))
+                .accessibilityHidden(true)
+            ForEach(chips) { chip in
+                HStack(spacing: 4) {
+                    Circle().fill(chip.waiting ? accent : Color.white.opacity(0.6)).frame(width: 5, height: 5)
+                    Text(chip.label).font(.system(size: 10, weight: .medium, design: .monospaced)).lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(chip.waiting ? accent.opacity(0.25) : Color.white.opacity(0.1)))
+                .foregroundStyle(.white.opacity(0.8))
+                .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
+                .accessibilityLabel(chip.waiting ? "\(chip.label), waiting for approval" : chip.label)
+            }
+            if overflow > 0 {
+                Text("+\(overflow)").font(.system(size: 10, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            Spacer(minLength: 0)
+        }
+        .clipped()
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.8),
+                   value: chips)
     }
 }
 

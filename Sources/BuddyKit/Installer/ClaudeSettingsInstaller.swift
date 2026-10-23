@@ -37,7 +37,7 @@ public enum InstallerError: Error, Equatable {
 public enum ClaudeSettingsInstaller {
     public static let events: [HookEventName] = [
         .sessionStart, .userPromptSubmit, .preToolUse, .postToolUse, .postToolUseFailure,
-        .notification, .stop, .stopFailure, .sessionEnd, .permissionRequest,
+        .notification, .stop, .stopFailure, .sessionEnd, .permissionRequest, .subagentStart, .subagentStop,
     ]
 
     /// Events whose hook group carries `"matcher": "*"`.
@@ -46,11 +46,11 @@ public enum ClaudeSettingsInstaller {
     ]
 
     private static let hookExecutableName = "buddy-hook"
-    /// The relay waits up to 110 s for a human decision, so the permission hook must outlive that.
-    private static let permissionTimeout = 120
+    /// The relay waits up to 610 s for a human decision, so the permission hook must outlive that.
+    private static let permissionTimeout = 620
     private static let defaultTimeout = 5
-    /// The question hook's relay waits up to 125 s for an answer, so its hook must outlive that.
-    private static let askTimeout = 130
+    /// The question hook's relay waits up to 610 s for an answer, so its hook must outlive that.
+    private static let askTimeout = 620
     private static let askMatcher = "AskUserQuestion"
     private static let askFlag = " --ask"
 

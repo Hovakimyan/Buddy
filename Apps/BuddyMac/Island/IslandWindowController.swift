@@ -283,7 +283,8 @@ final class IslandWindowController {
         updateStatusCard()
         syncQuestionCard()
         let content = IslandContent(
-            otherSessions: IslandLogic.otherSessions(feed.sessions, focused: focused?.id).count, card: contentCard())
+            otherSessions: IslandLogic.otherSessions(feed.sessions, focused: focused?.id).count, card: contentCard(),
+            agents: focused?.agents.count ?? 0)
         let compact = IslandGeometry.panelSize(mode: .compact, content: content, placement: placement)
         let expanded = IslandGeometry.panelSize(mode: .expanded, content: content, placement: placement)
         let resting = IslandGeometry.restingSize(placement: placement)

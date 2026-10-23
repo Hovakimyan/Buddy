@@ -188,6 +188,46 @@ import Testing
         #expect(projects == ["a": "buddy", "b": "trailing", "c": "unknown"])
     }
 
+    /// Observed in a real session: the main shell moves into subfolders and a worktree subagent reports
+    /// `<project>/.claude/worktrees/agent-…` as its `cwd`, while every event carries the main transcript's path.
+    @Test func projectIsTheFolderClaudeStartedInNotWhereItRunsNow() {
+        let transcript = "/Users/me/.claude/projects/-Users-me-work-desk-mate/s1.jsonl"
+        let cwds = [
+            "/Users/me/work/desk-mate",
+            "/Users/me/work/desk-mate/Docs/docs",
+            "/Users/me/work/desk-mate/.claude/worktrees/agent-a16862b5a2c7ca797",
+            "/Users/me/work/desk-mate/.claude/worktrees/agent-a16862b5a2c7ca797/apps/controller",
+        ]
+        for cwd in cwds {
+            var store = SessionStore()
+            store.apply(
+                HookEvent(sessionId: "s1", name: .preToolUse, cwd: cwd, transcriptPath: transcript, toolName: "Bash",
+                          agentId: "a16862b5a2c7ca797"),
+                now: t0)
+            #expect(store.sessions.first?.project == "desk-mate", "cwd \(cwd)")
+        }
+    }
+
+    @Test func projectKeepsPrivateAndTrailingSlashWhenMatchingTheTranscript() {
+        #expect(SessionStore.project(
+            fromCwd: "/private/tmp/e2e/my_proj/",
+            transcriptPath: "/Users/me/.claude/projects/-private-tmp-e2e-my-proj/s1.jsonl") == "my_proj")
+    }
+
+    @Test func projectWithoutATranscriptMatchStillLeavesTheWorktree() {
+        #expect(SessionStore.project(fromCwd: "/Users/me/app/.claude/worktrees/agent-1", transcriptPath: nil) == "app")
+        #expect(SessionStore.project(
+            fromCwd: "/Users/me/app/.claude/worktrees/agent-1",
+            transcriptPath: "/Users/me/.claude/projects/-Somewhere-else/s1.jsonl") == "app")
+        #expect(SessionStore.project(fromCwd: "/Users/me/app/src", transcriptPath: nil) == "src")
+    }
+
+    @Test func claudeStartedInsideAWorktreeKeepsTheWorktreeName() {
+        #expect(SessionStore.project(
+            fromCwd: "/Users/me/app/.claude/worktrees/feature",
+            transcriptPath: "/Users/me/.claude/projects/-Users-me-app--claude-worktrees-feature/s1.jsonl") == "feature")
+    }
+
     @Test func unknownSessionEventCreatesSession() {
         var store = SessionStore()
         store.apply(event(.preToolUse, id: "late", tool: "Read"), now: t0)

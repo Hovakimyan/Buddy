@@ -108,7 +108,7 @@ an upsert); the phone's Decision and Answer are written once and the first one s
 
 | Record type | Plain fields | Encrypted fields (`encryptedValues`) |
 | --- | --- | --- |
-| `Session` | `sessionId` (String), `state` (String: idle, working, waiting, finished, error), `updatedAt` (Date) | `project` (String), `lastTool` (String, optional) |
+| `Session` | `sessionId` (String), `state` (String: idle, working, waiting, finished, error), `updatedAt` (Date), `agentCount` (Int64, running subagents) | `project` (String), `lastTool` (String, optional) |
 | `Approval` | `requestId` (String, UUID), `sessionId` (String), `status` (String: pending, resolved, expired), `createdAt` (Date), `expiresAt` (Date), `isTruncated` (Int(64), 0 or 1) | `tool` (String), `summary` (String) |
 | `Decision` | `requestId` (String, UUID), `decision` (String: allow, deny), `decidedAt` (Date), `source` (String: mac, phone) | none |
 | `Question` | `requestId` (String, UUID), `sessionId` (String), `status` (String: pending, resolved, expired), `createdAt` (Date), `expiresAt` (Date) | `questions` (Bytes: JSON of the question list, each with text, header, options and multiSelect) |
@@ -152,7 +152,7 @@ that is created fresh, the phone can get one spurious "Claude Code needs approva
 ### Clean-up
 
 Every minute the Mac deletes Approval, Question, Decision and Answer records and orphaned Session records that the server last
-modified more than 10 minutes ago (at most 200 per pass). Sessions the running Mac published are removed only when
+modified more than 20 minutes ago (at most 200 per pass). Sessions the running Mac published are removed only when
 the session ends.
 
 ## 6. Verify that encrypted fields stay encrypted

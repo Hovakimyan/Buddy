@@ -65,7 +65,7 @@ You need: a Mac on macOS 15 or later, and Claude Code (`claude` works in your te
      **Mute sounds** or the **Volume** slider turns them down).
 9. **When Buddy is not running**, or anything else is down (iCloud, the phone), Claude Code asks you in the terminal as it
    always did. Buddy never blocks Claude Code and never allows anything without you. A request that nobody answers for
-   about 105 seconds also goes back to the terminal.
+   about 10 minutes also goes back to the terminal.
 10. **Open at login (signed build).** In the setup window (its last step) or Settings, turn on **Open Buddy at login**. If it says it is waiting for approval, click
     **Open Login Items Settings…** and allow Buddy under System Settings > General > Login Items. With the unsigned test
     build this is untried: macOS may ask for approval or may not keep it, so do not rely on it there; open Buddy yourself
@@ -121,7 +121,7 @@ The phone link needs the notarized Mac build; the unsigned test build has no iCl
 | No card appears on the Mac | Settings must say "Hooks installed" (see step 6). Start a NEW `claude` session after installing. Buddy must be running (icon in the menu bar). Claude Code only asks for things it has not already allowed. Questions it asks you (pick an answer) and plan approvals are always answered in the terminal. |
 | No notification on the iPhone | iPhone Settings > Notifications > Buddy must be on, and Focus modes can hide it. The Mac must be running with "Phone link on". The first alert can take up to a minute: open the app and pull to refresh. |
 | iPhone list is empty | Same Apple Account and iCloud on both, Buddy running on the Mac, a `claude` session started after the hooks were installed. Pull down to refresh. |
-| Allow is greyed out | It waits a moment after a request appears. It stays off for very long commands or unusual characters ("Allow in terminal" on the Mac, "Allow on your Mac" on the iPhone): answer in the terminal. It is also off once the request has expired (about 105 s) or was answered elsewhere. Deny works. |
+| Allow is greyed out | It waits a moment after a request appears. It stays off for very long commands or unusual characters ("Allow in terminal" on the Mac, "Allow on your Mac" on the iPhone): answer in the terminal. It is also off once the request has expired (about 10 minutes) or was answered elsewhere. Deny works. |
 | "BuddyMac cannot be opened" or "is damaged" | Unsigned test build: do the Open Anyway step (step 4). Otherwise delete it, download again and check the checksum. |
 | Many sessions appear and disappear on the iPhone | Two Macs on one Apple Account is not supported. Use one Mac. |
 

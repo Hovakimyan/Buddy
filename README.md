@@ -134,11 +134,11 @@ Claude Code ──hook──▶ buddy-hook ──unix socket──▶ BuddyMac �
 ```
 
 Claude Code runs `buddy-hook` for its hook events. The hook forwards each event as one line of JSON to a Unix socket
-owned by the Mac app and exits at once. For a permission request it then waits (up to 110 s) for a decision: the app
+owned by the Mac app and exits at once. For a permission request it then waits (up to 610 s) for a decision: the app
 shows an Allow / Deny / Always card, mirrors the request to the iPhone through your private CloudKit database, and the
 first decision wins. The hook prints the decision as JSON for Claude Code; for anything else (no app, timeout, an
-unknown reply) it prints nothing, so Claude Code asks in the terminal. A request expires after 105 s, a few seconds
-before the hook stops waiting.
+unknown reply) it prints nothing, so Claude Code asks in the terminal. A request expires after 10 minutes (600 s),
+a few seconds before the hook stops waiting. The terminal shows its own prompt meanwhile, so you can still answer there.
 
 The code lives in a Swift package (`BuddyKit`: events, session state, the approval queue, the socket server and client,
 the engine, the phone bridge, the settings installer) plus two executables, `buddy-hook` and `buddyctl`. `Apps/` holds
@@ -244,7 +244,7 @@ signing in to iCloud.
 3. Optionally delete `~/Library/Application Support/Buddy` (the copied hook binary and the socket). Uninstalling the
    hooks leaves that folder in place; it is harmless without hook entries.
 4. Optionally remove Buddy from the iPhone (and TestFlight). The CloudKit data is in your private database. The Mac's clean-up
-   (records older than about 10 minutes) only runs while the Mac app is running, so after you quit it, delete the
+   (records older than about 20 minutes) only runs while the Mac app is running, so after you quit it, delete the
    records or the `Buddy` zone in the CloudKit Dashboard.
 
 The colleague version is in [`docs/installing.md`](docs/installing.md).
@@ -266,7 +266,7 @@ For a safe manual run, `buddyctl` and the app honour `BUDDY_SOCKET`, `BUDDY_SETT
 - [Multi-agent roadmap](docs/multi-agent-roadmap.md) plans local Codex support first and defines how to evaluate other coding agents. The current app and dmg do not include those integrations.
 - Plans (`ExitPlanMode`) are answered on the Mac only; the iPhone shows the session as waiting. Questions
   (`AskUserQuestion`) show on the Mac and the iPhone, but a typed answer ("Other...") is Mac only. A question goes
-  to the terminal on **Answer in terminal** or Escape while its card shows, when it is not answered in about 2
+  to the terminal on **Answer in terminal** or Escape while its card shows, when it is not answered in about 10
   minutes, when "Answer Claude's questions in Buddy" is off in Settings, or when the Mac screen is locked or asleep
   and the phone link is down. It also goes there, with no card, when Buddy cannot show it: outside 1-4 questions or
   2-4 options per question, a header over 12 characters, or a blank or repeated question or option label.

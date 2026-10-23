@@ -718,21 +718,21 @@ private final class ScriptedTransport: PhoneTransport {
 
     @Test func cleanupDeletesQuestionsAndAnswers() async throws {
         let cloud = InMemoryCloud()
-        let clock = TestClock(t0 + 601)  // cutoff: t0 + 1
+        let clock = TestClock(t0 + 1201)  // cutoff: t0 + 1
         let bridge = PhoneBridge(
             queue: ApprovalQueue(), questionQueue: QuestionQueue(), transport: cloud.macSide,
             clock: { clock.now })
         func record(_ q: PendingQuestion, created: Date) -> QuestionRecord {
             QuestionRecord(
                 requestId: q.id, sessionId: "s1", status: .pending, questions: q.questions,
-                createdAt: created, expiresAt: created + 120)
+                createdAt: created, expiresAt: created + 600)
         }
         let old = Self.question(), fresh = Self.question()
         try await cloud.macSide.publish(question: record(old, created: t0))
-        try await cloud.macSide.publish(question: record(fresh, created: t0 + 601))
+        try await cloud.macSide.publish(question: record(fresh, created: t0 + 1201))
         try await cloud.phoneSide.submit(answer: AnswerRecord(requestId: old.id, responses: [["A"], ["X"]], answeredAt: t0))
         try await cloud.phoneSide.submit(
-            answer: AnswerRecord(requestId: fresh.id, responses: [["A"], ["X"]], answeredAt: t0 + 601))
+            answer: AnswerRecord(requestId: fresh.id, responses: [["A"], ["X"]], answeredAt: t0 + 1201))
 
         await bridge.cleanup()
 
@@ -778,25 +778,35 @@ private final class ScriptedTransport: PhoneTransport {
         await rig.bridge.stop()
     }
 
+    @Test func syncPublishesTheSubagentCount() async throws {
+        let rig = await Rig(start: t0)
+        var session = Session(id: "s1", project: "p", state: .working, updatedAt: t0)
+        session.agents = [Subagent(id: "a1", type: "Explore", updatedAt: t0), Subagent(id: "a2", updatedAt: t0)]
+        await rig.bridge.sync(sessions: [session])
+        let published = await firstMatch(in: rig.cloud.phoneSide.sessions()) { $0.count == 1 }
+        #expect(published?.first?.agentCount == 2)
+        await rig.bridge.stop()
+    }
+
     // MARK: Cleanup
 
     @Test func cleanupDeletesOldRecords() async throws {
-        // Bridge passes clock() - 10 minutes to the transport.
+        // Bridge passes clock() - 20 minutes to the transport, well past the longest wait (10 minutes).
         let transport = ScriptedTransport()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let bridge = PhoneBridge(queue: ApprovalQueue(), transport: transport, clock: { now })
         await bridge.cleanup()
-        #expect(transport.state.withLock { $0.cutoffs } == [now - 600])
+        #expect(transport.state.withLock { $0.cutoffs } == [now - 1200])
 
         // And the in-memory cloud removes approvals and decisions older than the cutoff only.
         let rig = await Rig(start: t0)
         let old = approval(), fresh = approval()
         _ = await rig.submit(old)
         _ = await rig.published(old.id, .pending)
-        rig.clock.set(t0 + 601)
+        rig.clock.set(t0 + 1201)
         let freshRecord = ApprovalRecord(
             requestId: fresh.id, sessionId: "s1", status: .pending, tool: "Bash", summary: "ls",
-            isTruncated: false, createdAt: t0 + 601, expiresAt: t0 + 661)
+            isTruncated: false, createdAt: t0 + 1201, expiresAt: t0 + 1801)
         try await rig.cloud.macSide.publish(approval: freshRecord)
         await rig.bridge.cleanup()
         let remaining = await firstMatch(in: rig.cloud.phoneSide.approvals()) { $0.count == 1 }
