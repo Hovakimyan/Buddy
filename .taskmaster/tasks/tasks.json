@@ -1,0 +1,266 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Task 1: Package skeleton, event parsing, session state machine",
+        "description": "SwiftPM package BuddyKit with JSONValue, HookEvent.parse, Session, SessionStore. Pure Swift, swift test only.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 1). Steps: verify Swift Testing works under Command Line Tools (else XCTest); TDD HookEventTests (valid PermissionRequest/Notification, malformed, missing session_id, unknown event, >4MiB rejected) then SessionStoreTests (SessionStart idle; prompt/tools working; PermissionRequest/Notification waiting; Stop finished then idle after 5s; StopFailure error; SessionEnd removes; 30min expiry; project = last path component; sorted newest first). Done when swift test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-19T23:58:37.908Z"
+      },
+      {
+        "id": "2",
+        "title": "Task 2: Tool summary and approval queue",
+        "description": "ToolSummary.make and actor ApprovalQueue with resolve-once, expiry, cancel by session, updates stream.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 2). TDD ToolSummaryTests (Bash command, file_path tools, unknown tool name, >200 chars truncated with ellipsis and isTruncated, multi-MB input bounded) and ApprovalQueueTests (submit suspends; decide true once then false; wrong id false; expireDue; decide after expiry false; cancel by session; two sessions independent; updates stream). Done when swift test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "1"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T00:23:27.274Z"
+      },
+      {
+        "id": "3",
+        "title": "Task 3: Hook output, socket server, client, buddy-hook executable",
+        "description": "HookOutput exact JSON, HookSocketServer (0600 socket, 0700 dir, 4MiB lines), HookClient (300ms connect, 110s wait), buddy-hook executable honoring BUDDY_SOCKET.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 3). TDD HookOutputTests, HookSocketTests (round trips allow/deny, nil handler, non-permission event no wait, file modes, stale socket replaced, no server <0.5s, no reply after timeout, oversized and garbage lines survive), BuddyHookProcessTests (spawn built binary). Review focus: malformed/oversized payload; app-not-running latency. Done when swift test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "1",
+          "2"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T00:43:15.769Z"
+      },
+      {
+        "id": "4",
+        "title": "Task 4: Hook installer and buddyctl",
+        "description": "ClaudeSettingsInstaller plan/apply/uninstall for ~/.claude/settings.json plus buddyctl install-hooks / uninstall-hooks (diff first, --apply to write).",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 4). TDD ClaudeSettingsInstallerTests (all events once incl StopFailure/PostToolUseFailure; PermissionRequest timeout 120, others 5; idempotent; preserves foreign hooks and unrelated keys; malformed JSON throws and never writes; path with spaces quoted; uninstall removes only buddy entries; diff; timestamped backup; no-change writes nothing). Review focus: existing hooks (other tools), malformed file, spaces in path. Done when swift test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "1"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T00:49:00.893Z"
+      },
+      {
+        "id": "5",
+        "title": "Task 5: Phone transport protocol, in-memory cloud, PhoneBridge",
+        "description": "PhoneTransport / PhoneClientTransport protocols, record types, InMemoryCloud fake, PhoneBridge actor.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 5). TDD PhoneBridgeTests (pending published; phone decision resolves as phone; unknown/late/duplicate/expired decisions ignored; resolved+expired statuses published; sessions synced and removed; transport failure never blocks queue; retry backoff 1s,2s,4s; cleanup >10min). Done when swift test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "2"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T01:01:31.510Z"
+      },
+      {
+        "id": "6",
+        "title": "Task 6: BuddyEngine (headless end-to-end)",
+        "description": "Actor wiring socket server, SessionStore, ApprovalQueue, PhoneBridge, 1s reaper; snapshots stream and decide().",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 6). TDD BuddyEngineTests with real socket + HookClient + InMemoryCloud: session appears; allow from Mac; deny from phone; Mac first then phone ignored; timeout prints nothing; terminal-answered PostToolUse cancels only when session+toolName+toolInput match (different tool or input does NOT cancel); SessionEnd cancels; two sessions independent; nil transport works; restart reuses socket path. Verify no residue in ~/Library/Application Support/Buddy. Done when swift test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "3",
+          "5"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T01:22:34.333Z"
+      },
+      {
+        "id": "7",
+        "title": "Task 7: Xcode project and BuddyMac menu-bar shell [needs Xcode]",
+        "description": "XcodeGen project, BuddyMac menu-bar app with AppModel, settings view to install/uninstall hooks with diff.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 7). XCODE GATE: Xcode installed and selected, signed in to paid Apple Developer account, Team ID known, brew install xcodegen. Confirm with user before starting. TDD AppModelTests (snapshot updates, decide forwards, planInstall no write). Manual: install hooks, run claude, session shows in menu bar. Done when xcodebuild test passes and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "4",
+          "6"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T02:05:25.422Z"
+      },
+      {
+        "id": "8",
+        "title": "Task 8: Notch island, character, approval card [needs Xcode]",
+        "description": "Island NSPanel at notch (top bar elsewhere), the earlier character, sounds, Allow/Deny/Always card.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 8). TDD IslandLogicTests (pending opens; working/finished peek; idle hidden unless hover). Copy sounds approval, finish, error, hover, open, close, peek. Always = allow current request only. Manual: Allow/Deny from island, 110s timeout falls back to terminal. Done when tests pass and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "7"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T02:44:52.345Z"
+      },
+      {
+        "id": "9",
+        "title": "Task 9: CloudKit transport [needs Xcode + Apple account]",
+        "description": "CloudKitTransport implementing both transports: private DB, zone Buddy, encrypted fields, subscriptions.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 9). TDD CloudKitMappingTests (round trips; sensitive fields via encryptedValues). Write docs/cloudkit-setup.md (container iCloud.com.sergeyhovakimyan.buddy, deploy schema to Production). Manual: records visible with encrypted fields; offline Mac still answers locally. Done when tests pass and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "5",
+          "8"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T03:24:56.618Z"
+      },
+      {
+        "id": "10",
+        "title": "Task 10: BuddyPhone iOS app [needs Xcode + Apple account]",
+        "description": "iOS 18 SwiftUI app: session list, approval screen, Face ID on Allow, notification actions.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 10). TDD PhoneModelTests (allow requires auth; allow submits after auth; deny no auth; truncated cannot allow; expired cannot decide; resolved hidden). Notification category BUDDY_APPROVAL: Deny direct, Allow opens app. Manual on real iPhone. Done when tests pass and committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "9"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T03:46:02.531Z"
+      },
+      {
+        "id": "11",
+        "title": "Task 11: End-to-end hardening and docs",
+        "description": "E2E checklist and failure drills on real Mac+iPhone, README.",
+        "details": "Plan: docs/superpowers/plans/2026-10-19-buddy.md (Task 11). Write docs/e2e-checklist.md (4 success criteria + drills: quit app mid-approval, airplane mode, CloudKit blocked, terminal first, two sessions, decision after expiry); run all; regression test per failure; README. Done when swift test and both xcodebuild schemes pass, committed.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "8",
+          "10"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T05:03:31.835Z"
+      },
+      {
+        "id": "12",
+        "title": "Task 12: App polish for a downloaded app",
+        "description": "Refresh installed hook copy after update, first-run welcome, launch at login, move to Applications",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md, Task 12: App polish for a downloaded app",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T18:48:29.484Z"
+      },
+      {
+        "id": "13",
+        "title": "Task 13: Mac release script and dmg",
+        "description": "scripts/release.sh: unsigned and signed+notarized modes, dmg, checksum",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md, Task 13: Mac release script and dmg",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "12"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T19:13:52.244Z"
+      },
+      {
+        "id": "14",
+        "title": "Task 14: iPhone setup and TestFlight scripts",
+        "description": "phone-signed-build.sh and testflight.sh, statically checked until the account exists",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md, Task 14: iPhone setup and TestFlight scripts",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "13"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T20:10:59.212Z"
+      },
+      {
+        "id": "15",
+        "title": "Task 15: Installing and releasing docs",
+        "description": "docs/installing.md, docs/releasing.md, README install section",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md, Task 15: Installing and releasing docs",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "14"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T21:24:18.353Z"
+      },
+      {
+        "id": "16",
+        "title": "Task 16: GitHub Actions release workflow",
+        "description": "Optional tag-triggered signed release, private draft",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md, Task 16: GitHub Actions release workflow",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "15"
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": "17",
+        "title": "Task 17: Verify with real Apple account",
+        "description": "Signed dmg, TestFlight, real device end-to-end; blocked on the account",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md, Task 17: Verify with real Apple account",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "16"
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": "18",
+        "title": "Task 18: Replace the earlier character and sounds with original artwork (licence)",
+        "description": "Remove the earlier character and sounds; original orb indicator and generated sounds; MIT third-party notice; docs update",
+        "details": "See docs/superpowers/plans/2026-10-20-installer.md Task 18. Blocks Tasks 16 and 17 distribution.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "15"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-10-20T21:23:03.591Z"
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-10-20T21:24:18.354Z",
+      "taskCount": 18,
+      "completedCount": 16,
+      "tags": [
+        "master"
+      ]
+    }
+  }
+}

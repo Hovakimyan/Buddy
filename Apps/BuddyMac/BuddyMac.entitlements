@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately NOT sandboxed: the app writes ~/.claude/settings.json and a socket under
+	     ~/Library/Application Support/Buddy (internal use only). iCloud/CloudKit keys are NOT here on
+	     purpose: they make the ad-hoc local build unlaunchable. They live in BuddyMac.cloud.entitlements (opt-in). -->
+</dict>
+</plist>

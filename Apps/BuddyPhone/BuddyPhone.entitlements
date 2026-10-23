@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately EMPTY. iCloud and push entitlements are restricted: an ad-hoc or simulator build that carries
+	     them is not guaranteed to launch, and the default build has no provisioning profile. They live in
+	     BuddyPhone.cloud.entitlements (opt-in). Without them the app runs and shows "iCloud not available". -->
+</dict>
+</plist>

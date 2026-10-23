@@ -1,0 +1,40 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+
+# Swift / Xcode
+.build/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+.superpowers/
+Apps/build/
+
+# Release output (scripts/release.sh): dmg, checksum and its build folder
+dist/
+
+# Marketing site source is deployed as a static Site.
+!website/dist/
+.playwright-cli/

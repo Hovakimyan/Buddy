@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- OPT-IN, signed builds only. Never the default: iCloud entitlements are restricted, and an ad-hoc or
+	     unsigned build that carries them is killed by macOS at launch (no provisioning profile). Select with
+	       xcodebuild ... BUDDY_ENTITLEMENTS=BuddyMac/BuddyMac.cloud.entitlements DEVELOPMENT_TEAM=<your team id> \
+	         CODE_SIGN_IDENTITY="Apple Development" -allowProvisioningUpdates
+	     See docs/cloudkit-setup.md. Deliberately NOT sandboxed (same as BuddyMac.entitlements): the app writes
+	     ~/.claude/settings.json and a socket under Application Support. Xcode adds com.apple.application-identifier
+	     and com.apple.developer.team-identifier from the provisioning profile; they are not written here. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.sergeyhovakimyan.buddy</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<!-- Push notifications (CloudKit silent pushes wake the Mac when the phone decides). Xcode rewrites the
+	     value to "production" for Developer ID / App Store distribution builds. -->
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
