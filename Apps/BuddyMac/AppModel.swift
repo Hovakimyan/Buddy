@@ -1,4 +1,5 @@
 import BuddyKit
+import CoreGraphics
 import Foundation
 import Observation
 
@@ -109,6 +110,62 @@ final class AppModel {
         didSet { defaults.set(questionsEnabled, forKey: Self.questionsEnabledKey) }
     }
 
+    /// The `UserDefaults` key of "Keep Mac awake while Claude works".
+    static let keepAwakeKey = "keepAwake.enabled"
+
+    /// "Keep Mac awake while Claude works" (default on): see `KeepAwake`.
+    var keepAwakeEnabled: Bool {
+        didSet {
+            defaults.set(keepAwakeEnabled, forKey: Self.keepAwakeKey)
+            updateKeepAwake()
+        }
+    }
+    @ObservationIgnored private let keepAwake = KeepAwake()
+    @ObservationIgnored private var keepAwakeTimer: Task<Void, Never>?
+
+    /// Whether the Mac is being kept awake right now (the menu says so).
+    private(set) var isKeepingAwake = false
+
+    /// Re-evaluated on every snapshot and every 30 s (the grace period runs out with no event).
+    private func updateKeepAwake() {
+        keepAwake.update(holding: keepAwakeEnabled && KeepAwake.shouldHold(sessions: sessions, now: Date()))
+        isKeepingAwake = keepAwake.isHolding
+        if keepAwakeTimer == nil {
+            keepAwakeTimer = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                    self?.updateKeepAwake()
+                }
+            }
+        }
+    }
+
+    /// While a finished turn waits for a phone message, Buddy checks this often whether someone uses the Mac.
+    @ObservationIgnored private var activityTask: Task<Void, Never>?
+
+    /// A finished turn waits for a message from the iPhone (see `BuddyEngine.stopHoldTimeout`), but only while nobody
+    /// is at the Mac: the first keyboard or mouse input ends every wait, so the terminal is never held from its user.
+    private func watchForActivity() {
+        let waiting = sessions.contains(where: \.awaitingMessage)
+        if waiting, activityTask == nil {
+            activityTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                    guard let self else { return }
+                    if Self.secondsSinceInput() < 1 { await self.engine?.releaseWaitingTurns() }
+                }
+            }
+        } else if !waiting {
+            activityTask?.cancel()
+            activityTask = nil
+        }
+    }
+
+    /// Seconds since the last keyboard, mouse or trackpad input on this Mac (no permission needed).
+    nonisolated static func secondsSinceInput() -> TimeInterval {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
     /// Whether the phone link is running, and if not why not. Never an error: without it the Mac card
     /// works exactly the same.
     private(set) var phoneLinkStatus: PhoneLinkStatus
@@ -162,6 +219,7 @@ final class AppModel {
         self.defaults = defaults
         self.screen = screen
         self.questionsEnabled = defaults.object(forKey: Self.questionsEnabledKey) as? Bool ?? true
+        self.keepAwakeEnabled = defaults.object(forKey: Self.keepAwakeKey) as? Bool ?? true
         self.deferredEngine = nil
         self.phoneLinkStatus = .off(reason: "not configured")
         self.paths = paths
@@ -185,6 +243,7 @@ final class AppModel {
         self.defaults = defaults
         self.screen = screen
         self.questionsEnabled = defaults.object(forKey: Self.questionsEnabledKey) as? Bool ?? true
+        self.keepAwakeEnabled = defaults.object(forKey: Self.keepAwakeKey) as? Bool ?? true
         self.deferredEngine = DeferredEngine(selector: selector, makeEngine: makeEngine)
         self.phoneLinkStatus = .checking
         self.paths = paths
@@ -195,6 +254,8 @@ final class AppModel {
     isolated deinit {
         snapshotTask?.cancel()
         phoneLinkRetryTask?.cancel()
+        keepAwakeTimer?.cancel()
+        activityTask?.cancel()
     }
 
     // MARK: Engine
@@ -358,6 +419,8 @@ final class AppModel {
         }
         // A real request must never wait behind the demo: it ends at once and the island shows the request.
         if isDemoRunning, !pending.isEmpty || !questions.isEmpty { stopDemo() }
+        updateKeepAwake()
+        watchForActivity()
     }
 
     // MARK: Demo

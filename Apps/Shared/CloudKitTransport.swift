@@ -48,13 +48,18 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
         var decisionToken: Data?
         var delivered: [UUID: DecisionRecord] = [:]
         var deliveredAnswers: [UUID: AnswerRecord] = [:]
+        /// Messages seen and not yet consumed (`consume(message:)` deletes them, then they leave here).
+        var deliveredMessages: [UUID: MessageRecord] = [:]
         var decisionSubscribers: [UUID: AsyncStream<DecisionRecord>.Continuation] = [:]
         var answerSubscribers: [UUID: AsyncStream<AnswerRecord>.Continuation] = [:]
+        var messageSubscribers: [UUID: AsyncStream<MessageRecord>.Continuation] = [:]
         var decisionFlight = Flight()
         /// Approvals and questions published pending and not yet resolved/expired, by request id: the poll
         /// runs while this is non-empty.
         var outstanding: [UUID: Date] = [:]
         var pollTask: Task<Void, Never>?
+        /// Mac: a slow fetch that runs while someone listens for messages, in case a push never comes.
+        var messagePollTask: Task<Void, Never>?
         /// Sessions this run published: owned by `removeSession`, never aged out by `deleteRecords`.
         var publishedSessions: Set<String> = []
 
@@ -84,6 +89,7 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
     private let clock: @Sendable () -> Date
     private let pollInterval: Duration
     private let phonePollInterval: Duration
+    private let messagePollInterval: Duration
     private let state = Mutex(State())
     private let log = Logger(subsystem: "com.sergeyhovakimyan.buddy", category: "cloudkit")
 
@@ -91,14 +97,16 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
         role: Role,
         database: any CloudDatabase,
         clock: @escaping @Sendable () -> Date = Date.init,
-        pollInterval: Duration = .seconds(4),
-        phonePollInterval: Duration = .seconds(10)
+        pollInterval: Duration = .seconds(2),
+        phonePollInterval: Duration = .seconds(3),
+        messagePollInterval: Duration = .seconds(5)
     ) {
         self.role = role
         self.database = database
         self.clock = clock
         self.pollInterval = pollInterval
         self.phonePollInterval = phonePollInterval
+        self.messagePollInterval = messagePollInterval
     }
 
     /// The real transport on `iCloud.com.sergeyhovakimyan.buddy`'s private database. Only call it when the
@@ -112,8 +120,10 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
         state.withLock {
             $0.pollTask?.cancel()
             $0.phonePollTask?.cancel()
+            $0.messagePollTask?.cancel()
             for continuation in $0.decisionSubscribers.values { continuation.finish() }
             for continuation in $0.answerSubscribers.values { continuation.finish() }
+            for continuation in $0.messageSubscribers.values { continuation.finish() }
             for continuation in $0.sessionSubscribers.values { continuation.finish() }
             for continuation in $0.approvalSubscribers.values { continuation.finish() }
             for continuation in $0.questionSubscribers.values { continuation.finish() }
@@ -126,18 +136,21 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
     /// they need).
     func stop() {
         let (tasks, continuations) = state.withLock { state -> ([Task<Void, Never>], [() -> Void]) in
-            let tasks = [state.pollTask, state.phonePollTask].compactMap { $0 }
+            let tasks = [state.pollTask, state.phonePollTask, state.messagePollTask].compactMap { $0 }
             state.pollTask = nil
             state.phonePollTask = nil
+            state.messagePollTask = nil
             state.outstanding = [:]
             let finishers: [() -> Void] =
                 state.decisionSubscribers.values.map { c in { c.finish() } }
                 + state.answerSubscribers.values.map { c in { c.finish() } }
+                + state.messageSubscribers.values.map { c in { c.finish() } }
                 + state.sessionSubscribers.values.map { c in { c.finish() } }
                 + state.approvalSubscribers.values.map { c in { c.finish() } }
                 + state.questionSubscribers.values.map { c in { c.finish() } }
             state.decisionSubscribers = [:]
             state.answerSubscribers = [:]
+            state.messageSubscribers = [:]
             state.sessionSubscribers = [:]
             state.approvalSubscribers = [:]
             state.questionSubscribers = [:]
@@ -160,7 +173,7 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
     @discardableResult
     func handleNotification(subscriptionID: String?) -> Bool {
         switch subscriptionID {
-        case CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID:
+        case CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID, CloudKitSchema.messageSubscriptionID:
             Task { await pullPhoneInput() }
         case CloudKitSchema.approvalSubscriptionID, CloudKitSchema.questionSubscriptionID:
             Task { await refresh() }
@@ -190,7 +203,10 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
 
     func publish(approval: ApprovalRecord) async throws {
         let record = CKRecord(from: approval)
+        let started = clock()
         try await perform { try await database.save([record], policy: .allKeys) }
+        let took = Self.milliseconds(since: started, now: clock())
+        log.notice("approval \(approval.requestId, privacy: .public) \(approval.status.rawValue, privacy: .public) saved in \(took, privacy: .public) ms")
         track(approval)
     }
 
@@ -213,7 +229,10 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
 
     func publish(question: QuestionRecord) async throws {
         let record = CKRecord(from: question)
+        let started = clock()
         try await perform { try await database.save([record], policy: .allKeys) }
+        let took = Self.milliseconds(since: started, now: clock())
+        log.notice("question \(question.requestId, privacy: .public) \(question.status.rawValue, privacy: .public) saved in \(took, privacy: .public) ms")
         track(requestId: question.requestId, pending: question.status == .pending, expiresAt: question.expiresAt)
     }
 
@@ -234,7 +253,43 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
         return stream
     }
 
-    /// Deletes records the server last modified before `olderThan`: Approvals, Questions, Decisions, Answers, and Sessions
+    func messages() -> AsyncStream<MessageRecord> {
+        let (stream, continuation) = AsyncStream<MessageRecord>.makeStream()
+        let id = UUID()
+        continuation.onTermination = { [weak self] _ in
+            self?.state.withLock { $0.messageSubscribers[id] = nil }
+        }
+        state.withLock { state in
+            state.messageSubscribers[id] = continuation
+            for message in state.deliveredMessages.values.sorted(by: { $0.sentAt < $1.sentAt }) {
+                continuation.yield(message)
+            }
+        }
+        // Sets up the zone and subscription, then delivers any Message already in the zone.
+        Task { [weak self] in await self?.pullPhoneInput() }
+        // Messages have no request to bound a poll by: a slow one stands in for a lost push.
+        state.withLock { state in
+            guard state.messagePollTask == nil else { return }
+            let interval = messagePollInterval
+            state.messagePollTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: interval) } catch { return }
+                    guard let self else { return }
+                    await self.pullPhoneInput()
+                }
+            }
+        }
+        return stream
+    }
+
+    /// Deletes a message the Mac took, so no later run delivers it again.
+    func consume(message id: UUID) async throws {
+        let recordID = CKRecord.ID(recordName: CloudKitSchema.messageRecordName(for: id), zoneID: CloudKitSchema.zoneID)
+        try await perform { try await database.delete([recordID]) }
+        state.withLock { _ = $0.deliveredMessages.removeValue(forKey: id) }
+    }
+
+    /// Deletes records the server last modified before `olderThan`: Approvals, Questions, Decisions, Answers, Messages, and Sessions
     /// this run did not publish (orphans of an earlier run; a live session's record is owned by
     /// `removeSession`, even if it has been quiet for a while). At most `deleteBatchLimit` per call; the
     /// next cleanup takes the rest.
@@ -251,7 +306,7 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
             guard let modified = changed.modifiedAt, modified < olderThan else { continue }
             switch changed.record.recordType {
             case CloudKitSchema.RecordType.approval, CloudKitSchema.RecordType.decision,
-                CloudKitSchema.RecordType.question, CloudKitSchema.RecordType.answer:
+                CloudKitSchema.RecordType.question, CloudKitSchema.RecordType.answer, CloudKitSchema.RecordType.message:
                 doomed.append(changed.record.recordID)
             case CloudKitSchema.RecordType.session where !published.contains(changed.record.recordID.recordName):
                 doomed.append(changed.record.recordID)
@@ -266,7 +321,27 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
         state.withLock { state in
             state.delivered = state.delivered.filter { !gone.contains(CloudKitSchema.decisionRecordName(for: $0.key)) }
             state.deliveredAnswers = state.deliveredAnswers.filter { !gone.contains(CloudKitSchema.answerRecordName(for: $0.key)) }
+            state.deliveredMessages = state.deliveredMessages.filter { !gone.contains(CloudKitSchema.messageRecordName(for: $0.key)) }
         }
+    }
+
+    /// Deletes every Session record this run did not publish (see `PhoneTransport.removeUnownedSessions`).
+    func removeUnownedSessions() async throws {
+        let changes: ZoneChanges
+        do {
+            changes = try await perform { try await database.changes(in: CloudKitSchema.zoneID, since: nil) }
+        } catch where CloudKitFailure.classify(error) == .zoneNotFound {
+            return
+        }
+        let published = state.withLock { $0.publishedSessions }
+        let leftovers = changes.records
+            .filter { $0.record.recordType == CloudKitSchema.RecordType.session }
+            .map(\.record.recordID)
+            .filter { !published.contains($0.recordName) }
+            .prefix(Self.deleteBatchLimit)
+        guard !leftovers.isEmpty else { return }
+        try await perform { try await database.delete(Array(leftovers)) }
+        log.notice("removed \(leftovers.count, privacy: .public) session records left by an earlier run")
     }
 
     // MARK: PhoneClientTransport (iPhone)
@@ -342,6 +417,12 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
         }
     }
 
+    /// Saves a message for the Mac. Its id is new every time, so there is nothing to collide with.
+    func submit(message: MessageRecord) async throws {
+        let record = CKRecord(from: message)
+        try await perform { try await database.save([record], policy: .allKeys) }
+    }
+
     /// Fetches the zone's changes and publishes the new full sets to `sessions()` / `approvals()` / `questions()`.
     /// Called on subscribe, on a push, by the foreground poll, and by the app (pull to refresh).
     func refresh() async {
@@ -364,6 +445,7 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
                 state.decisionToken = changes.token ?? state.decisionToken
                 var fresh: [DecisionRecord] = []
                 var freshAnswers: [AnswerRecord] = []
+                var freshMessages: [MessageRecord] = []
                 for changed in changes.records {
                     switch changed.record.recordType {
                     case CloudKitSchema.RecordType.decision:
@@ -378,6 +460,12 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
                         else { continue }
                         state.deliveredAnswers[answer.requestId] = answer
                         freshAnswers.append(answer)
+                    case CloudKitSchema.RecordType.message:
+                        guard let message = MessageRecord(from: changed.record),
+                            state.deliveredMessages[message.messageId] == nil
+                        else { continue }
+                        state.deliveredMessages[message.messageId] = message
+                        freshMessages.append(message)
                     default:
                         continue
                     }
@@ -388,6 +476,19 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
                 for continuation in state.answerSubscribers.values {
                     for answer in freshAnswers { continuation.yield(answer) }
                 }
+                for continuation in state.messageSubscribers.values {
+                    for message in freshMessages { continuation.yield(message) }
+                }
+                // How long the phone's tap took to get here (the phone's clock, so roughly): the delay people feel.
+                let now = clock()
+                for decision in fresh {
+                    let late = Self.milliseconds(since: decision.decidedAt, now: now)
+                    log.notice("decision for \(decision.requestId, privacy: .public) arrived \(late, privacy: .public) ms after the tap")
+                }
+                for answer in freshAnswers {
+                    let late = Self.milliseconds(since: answer.answeredAt, now: now)
+                    log.notice("answer for \(answer.requestId, privacy: .public) arrived \(late, privacy: .public) ms after the tap")
+                }
             }
         } catch {
             if CloudKitFailure.classify(error) == .changeTokenExpired {
@@ -396,6 +497,8 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
             log.error("decision/answer fetch failed: \(error.localizedDescription, privacy: .public)")
         }
     }
+
+    static func milliseconds(since start: Date, now: Date) -> Int { Int((now.timeIntervalSince(start) * 1000).rounded()) }
 
     /// Records a published approval for the bounded poll, and starts the poll if it is not running.
     private func track(_ approval: ApprovalRecord) {
@@ -597,7 +700,7 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
     private func ensureSubscription() async {
         let wanted: [CKQuerySubscription] =
             role == .mac
-            ? [CloudKitSchema.decisionSubscription(), CloudKitSchema.answerSubscription()]
+            ? [CloudKitSchema.decisionSubscription(), CloudKitSchema.answerSubscription(), CloudKitSchema.messageSubscription()]
             : [CloudKitSchema.approvalSubscription(), CloudKitSchema.questionSubscription()]
         let attempt = state.withLock { state -> [CKQuerySubscription]? in
             let missing = wanted.filter { !state.savedSubscriptions.contains($0.subscriptionID) }
@@ -616,6 +719,7 @@ final class CloudKitTransport: PhoneTransport, PhoneClientTransport, Sendable {
             do {
                 try await database.save(subscription: subscription)
                 saved.append(subscription.subscriptionID)
+                log.notice("subscription \(subscription.subscriptionID, privacy: .public) saved")
             } catch {
                 log.error(
                     "subscription \(subscription.subscriptionID, privacy: .public) save failed (will retry later): \(error.localizedDescription, privacy: .public)"

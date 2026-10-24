@@ -165,7 +165,7 @@ allowlist (`DisplayText.isPlainReadable`, in `Shared/`: keycap emoji, Hebrew, Ar
 whose rendered width has not been measured or which can reorder the line; the iPhone uses the same rule ("Allow on
 your Mac"). Deny always works.
 
-The bar shows the character, **Block** (`BuddyMac/Characters/Block/`, drawn in code). The sounds
+The bar shows the character, **Block** (`Shared/Characters/Block/`, drawn in code; the iPhone app shows it too). The sounds
 (`BuddyMac/Resources/sounds/block/`) are CC0 files, each listed with its source in `BuddyMac/Resources/sounds/SOURCES.md`.
 The notch placement and screen choice (`IslandGeometry.swift`), the panel set-up (`IslandWindowController.swift`) and the
 sound player (`SoundPlayer.swift`) are Buddy's own code, like everything else here.

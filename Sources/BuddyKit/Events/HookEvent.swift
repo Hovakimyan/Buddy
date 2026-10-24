@@ -39,6 +39,15 @@ public struct HookEvent: Sendable, Equatable {
     /// Set by the `buddy-hook --ask` relay (top-level `"buddy_ask": true`) on the `AskUserQuestion`
     /// call it waits on. Anything else, including a non-boolean value, is false.
     public let isAsk: Bool
+    /// Set by the `buddy-hook --stop` relay (top-level `"buddy_stop": true`) on the `Stop` it waits on for a
+    /// message from the phone. Anything else, including a non-boolean value, is false.
+    public let isStopWait: Bool
+    /// What the person typed (`prompt`, on `UserPromptSubmit`); nil when absent.
+    public let prompt: String?
+    /// Claude's reply that ended the turn (`last_assistant_message`, on `Stop`); nil when absent.
+    public let lastAssistantMessage: String?
+    /// Where the session runs (`buddy_terminal`, written only by the relay); nil when absent.
+    public let terminal: TerminalInfo?
 
     public init(
         sessionId: String,
@@ -51,7 +60,11 @@ public struct HookEvent: Sendable, Equatable {
         notificationType: String? = nil,
         agentId: String? = nil,
         agentType: String? = nil,
-        isAsk: Bool = false
+        isAsk: Bool = false,
+        isStopWait: Bool = false,
+        prompt: String? = nil,
+        lastAssistantMessage: String? = nil,
+        terminal: TerminalInfo? = nil
     ) {
         self.sessionId = sessionId
         self.name = name
@@ -64,10 +77,14 @@ public struct HookEvent: Sendable, Equatable {
         self.agentId = agentId
         self.agentType = agentType
         self.isAsk = isAsk
+        self.isStopWait = isStopWait
+        self.prompt = prompt
+        self.lastAssistantMessage = lastAssistantMessage
+        self.terminal = terminal
     }
 
-    /// Whether the relay stays connected for a reply: a permission request, or an ask.
-    public var waitsForReply: Bool { name == .permissionRequest || isAsk }
+    /// Whether the relay stays connected for a reply: a permission request, an ask, or a stop waiting for a message.
+    public var waitsForReply: Bool { name == .permissionRequest || isAsk || isStopWait }
 
     /// A `Notification` that only says Claude has been idle for a while ("Claude is waiting for your
     /// input"), not that it needs an answer. Known by its type, or by its text when the payload has no
@@ -94,6 +111,12 @@ public struct HookEvent: Sendable, Equatable {
         let agentType: JSONValue?
         /// Decoded loosely like `agentId`: only the boolean `true` counts.
         let buddyAsk: JSONValue?
+        /// Decoded loosely like `buddyAsk`.
+        let buddyStop: JSONValue?
+        /// Decoded loosely like `agentId`.
+        let prompt: JSONValue?
+        let lastAssistantMessage: JSONValue?
+        let buddyTerminal: JSONValue?
 
         enum CodingKeys: String, CodingKey {
             case sessionId = "session_id"
@@ -107,6 +130,10 @@ public struct HookEvent: Sendable, Equatable {
             case agentId = "agent_id"
             case agentType = "agent_type"
             case buddyAsk = "buddy_ask"
+            case buddyStop = "buddy_stop"
+            case prompt
+            case lastAssistantMessage = "last_assistant_message"
+            case buddyTerminal = "buddy_terminal"
         }
     }
 
@@ -132,7 +159,13 @@ public struct HookEvent: Sendable, Equatable {
             notificationType: payload.notificationType,
             agentId: { if case .string(let id)? = payload.agentId { id } else { nil } }(),
             agentType: { if case .string(let type)? = payload.agentType, !type.isEmpty { type } else { nil } }(),
-            isAsk: payload.buddyAsk == .bool(true)
+            isAsk: payload.buddyAsk == .bool(true),
+            isStopWait: payload.buddyStop == .bool(true),
+            prompt: { if case .string(let text)? = payload.prompt, !text.isEmpty { text } else { nil } }(),
+            lastAssistantMessage: {
+                if case .string(let text)? = payload.lastAssistantMessage, !text.isEmpty { text } else { nil }
+            }(),
+            terminal: TerminalInfo(json: payload.buddyTerminal)
         )
     }
 

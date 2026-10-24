@@ -16,31 +16,53 @@ public enum HookClient: Sendable {
     /// question after 600 s, so the app's own end comes first here too.
     public static let askWaitTimeout: TimeInterval = 610
 
+    /// How long a stop (`--stop` on a `Stop`) waits for a message from the phone. The engine lets a held stop go
+    /// after `BuddyEngine.stopHoldTimeout` (600 s), so the app's own end comes first here too.
+    public static let stopWaitTimeout: TimeInterval = 610
+
     /// Forwards `input` (the hook JSON from stdin) to the app listening on `socketPath`.
     ///
     /// Returns the string to print on stdout, or nil if there is nothing to print: the payload is
     /// not a valid hook event (nothing is sent), nobody is listening, the app made no decision,
     /// the reply was not one of the exact reply lines, or the wait timeout elapsed. Only a
-    /// `PermissionRequest`, or an ask, waits for a reply; every other event returns right after
-    /// sending. An ask is `ask` (the `--ask` flag) on a `PreToolUse` of `AskUserQuestion`: the
-    /// relay itself marks that line `"buddy_ask": true` and removes the key from every other line,
-    /// so only the flag, never the payload, makes the server wait. `waitTimeout` defaults to
-    /// `askWaitTimeout` for an ask and `defaultWaitTimeout` otherwise.
+    /// `PermissionRequest`, an ask or a stop wait waits for a reply; every other event returns right after
+    /// sending. An ask is `ask` (the `--ask` flag) on a `PreToolUse` of `AskUserQuestion`, a stop wait is `stop`
+    /// (the `--stop` flag) on a `Stop`: the relay itself marks that line `"buddy_ask": true` or
+    /// `"buddy_stop": true` and removes those keys from every other line, so only the flag, never the payload,
+    /// makes the server wait. `waitTimeout` defaults to `askWaitTimeout` for an ask, `stopWaitTimeout` for a stop
+    /// wait and `defaultWaitTimeout` otherwise.
     public static func run(
         input: Data,
         socketPath: URL,
         ask: Bool = false,
+        stop: Bool = false,
+        terminal: TerminalInfo? = nil,
         connectTimeout: TimeInterval = 0.3,
         waitTimeout: TimeInterval? = nil
     ) -> String? {
         guard let event = HookEvent.parse(input) else { return nil }
         let isAsk = ask && event.name == .preToolUse && event.toolName == "AskUserQuestion"
-        guard let line = requestLine(from: input, ask: isAsk, strayFlag: event.isAsk) else { return nil }
+        let isStopWait = stop && event.name == .stop
+        // Where the session runs, on the events that tell the Mac about a turn (enough to keep it current).
+        let tellsTerminal = [.sessionStart, .userPromptSubmit, .stop].contains(event.name) && event.agentId == nil
+        var updates: [String: JSONValue?] = [:]
+        if isAsk { updates[Marker.ask.rawValue] = .bool(true) } else if event.isAsk { updates[Marker.ask.rawValue] = .some(nil) }
+        if isStopWait {
+            updates[Marker.stop.rawValue] = .bool(true)
+        } else if event.isStopWait {
+            updates[Marker.stop.rawValue] = .some(nil)
+        }
+        if tellsTerminal, let terminal {
+            updates[Marker.terminal.rawValue] = terminal.json
+        } else if event.terminal != nil {
+            updates[Marker.terminal.rawValue] = .some(nil)
+        }
+        guard let line = requestLine(from: input, updates: updates) else { return nil }
         guard let fd = connect(to: socketPath, timeout: connectTimeout) else { return nil }
         defer { close(fd) }
 
-        let waitsForReply = event.name == .permissionRequest || isAsk
-        let waitTimeout = waitTimeout ?? (isAsk ? askWaitTimeout : defaultWaitTimeout)
+        let waitsForReply = event.name == .permissionRequest || isAsk || isStopWait
+        let waitTimeout = waitTimeout ?? (isAsk ? askWaitTimeout : isStopWait ? stopWaitTimeout : defaultWaitTimeout)
         let started = HookWire.now()
         let sendDeadline = started + nanoseconds(waitsForReply ? waitTimeout : sendTimeout)
         guard send(line, to: fd, until: sendDeadline), waitsForReply else { return nil }
@@ -54,19 +76,23 @@ public enum HookClient: Sendable {
         UInt64(max(0, min(seconds, 1_000_000)) * 1_000_000_000)
     }
 
-    /// The payload as a single newline-terminated line, with `buddy_ask` set to true for an ask and
-    /// removed when the payload sets it without being one (`strayFlag`, as the server's own parser
-    /// reads it, so an escaped key cannot slip through). In valid JSON a raw CR or LF can only be
-    /// inter-token whitespace, so pretty-printed input is flattened rather than split. Any other
-    /// payload is sent as it came; only these two cases are decoded and encoded again.
-    private static func requestLine(from input: Data, ask: Bool, strayFlag: Bool) -> Data? {
+    /// The keys only the relay may set: from its flags (`--ask`, `--stop`) and from where it runs (`buddy_terminal`).
+    private enum Marker: String {
+        case ask = "buddy_ask"
+        case stop = "buddy_stop"
+        case terminal = "buddy_terminal"
+    }
+
+    /// The payload as a single newline-terminated line, with `updates` applied: a value writes the key, `.some(nil)`
+    /// removes one the payload set itself (as the server's own parser reads it, so an escaped key cannot slip through).
+    /// In valid JSON a raw CR or LF can only be inter-token whitespace, so pretty-printed input is flattened rather
+    /// than split. Without updates the payload is sent as it came; only then is it decoded and encoded again.
+    private static func requestLine(from input: Data, updates: [String: JSONValue?]) -> Data? {
         var payload = input
-        if ask || strayFlag {
-            // Too deeply nested to rewrite: send nothing rather than a line with the wrong flag.
-            guard var members = try? JSONDecoder().decode([String: JSONValue].self, from: input),
-                  members["buddy_ask"] != nil || ask
-            else { return nil }
-            members["buddy_ask"] = ask ? .bool(true) : nil
+        if !updates.isEmpty {
+            // Too deeply nested to rewrite: send nothing rather than a line with the wrong keys.
+            guard var members = try? JSONDecoder().decode([String: JSONValue].self, from: input) else { return nil }
+            for (key, value) in updates { members[key] = value }
             guard let rewritten = try? JSONEncoder().encode(members) else { return nil }
             payload = rewritten
         }

@@ -22,7 +22,22 @@ public enum HookOutput: Sendable {
                 #"{"behavior":"deny","message":"The user wants to change the plan and will type the changes in the terminal.","interrupt":true}"#)
         case .answers(let answers):
             return answered(answers, event: event)
+        case .message(let text):
+            return continued(with: text, event: event)
         }
+    }
+
+    /// What Claude reads when a message from the phone keeps it from stopping.
+    public static let messagePreamble = "The user sent this message from their iPhone with Buddy. Continue with it:"
+
+    /// Blocks the `Stop` with the phone's message as the reason, so Claude carries on with it. Only for a `Stop`:
+    /// on any other event this shape would mean something else, so nothing is printed.
+    private static func continued(with text: String, event: HookEvent) -> String? {
+        guard event.name == .stop else { return nil }
+        let output = ["decision": "block", "reason": messagePreamble + "\n\n" + text]
+        guard let data = try? JSONSerialization.data(withJSONObject: output, options: [.withoutEscapingSlashes, .sortedKeys])
+        else { return nil }
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func permission(_ decisionJSON: String) -> String {

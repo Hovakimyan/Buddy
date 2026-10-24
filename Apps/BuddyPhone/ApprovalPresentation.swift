@@ -60,11 +60,3 @@ struct ApprovalPresentation: Equatable {
         return nil
     }
 }
-
-extension ApprovalRecord {
-    /// Whether the phone may offer Allow at all: the command was not cut, and every character of it as shown
-    /// (`DisplayText.sanitized`) is in the allowlisted classes the Mac card uses (`DisplayText.isPlainReadable`).
-    var canBeAllowedOnPhone: Bool {
-        !isTruncated && DisplayText.isPlainReadable(DisplayText.sanitized(summary))
-    }
-}

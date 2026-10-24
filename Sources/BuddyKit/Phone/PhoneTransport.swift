@@ -13,9 +13,16 @@ public struct SessionRecord: Codable, Sendable, Equatable {
     public var updatedAt: Date
     /// Subagents running in the session now (`Session.agents`); the phone shows the count only.
     public var agentCount: Int
+    /// Claude finished its turn and waits for a message from the phone (for up to 10 minutes, while the Mac is not in use).
+    public var awaitingMessage: Bool
+    /// The latest prompt and Claude's reply to it (see `Session.lastPrompt` / `lastReply`), so the phone shows where
+    /// the conversation stands before the person writes to it.
+    public var lastPrompt: String?
+    public var lastReply: String?
 
     public init(
-        sessionId: String, state: SessionState, project: String, lastTool: String?, updatedAt: Date, agentCount: Int = 0
+        sessionId: String, state: SessionState, project: String, lastTool: String?, updatedAt: Date, agentCount: Int = 0,
+        awaitingMessage: Bool = false, lastPrompt: String? = nil, lastReply: String? = nil
     ) {
         self.sessionId = sessionId
         self.state = state
@@ -23,6 +30,9 @@ public struct SessionRecord: Codable, Sendable, Equatable {
         self.lastTool = lastTool
         self.updatedAt = updatedAt
         self.agentCount = agentCount
+        self.awaitingMessage = awaitingMessage
+        self.lastPrompt = lastPrompt
+        self.lastReply = lastReply
     }
 }
 
@@ -116,6 +126,26 @@ public struct AnswerRecord: Codable, Sendable, Equatable {
     }
 }
 
+/// A message the person typed on the phone for one session; the Mac hands it to Claude when its turn ends.
+/// Untrusted input: the Mac takes it only for a session it knows, once, while it is recent, and only as text
+/// (see `BuddyEngine.receive(message:)`).
+public struct MessageRecord: Codable, Sendable, Equatable {
+    public var messageId: UUID
+    public var sessionId: String
+    public var text: String
+    public var sentAt: Date
+
+    /// The longest message the phone sends and the Mac takes, in characters.
+    public static let maxLength = 2000
+
+    public init(messageId: UUID, sessionId: String, text: String, sentAt: Date) {
+        self.messageId = messageId
+        self.sessionId = sessionId
+        self.text = text
+        self.sentAt = sentAt
+    }
+}
+
 /// The Mac's side of the phone link (CloudKit in production, `InMemoryCloud` in tests).
 public protocol PhoneTransport: Sendable {
     func publish(session: SessionRecord) async throws
@@ -124,7 +154,26 @@ public protocol PhoneTransport: Sendable {
     func decisions() -> AsyncStream<DecisionRecord>
     func publish(question: QuestionRecord) async throws
     func answers() -> AsyncStream<AnswerRecord>
+    /// Every message from the phone not yet consumed, then each new one.
+    func messages() -> AsyncStream<MessageRecord>
+    /// Removes a message the Mac took, so it is never delivered again (after a restart, say).
+    func consume(message id: UUID) async throws
     func deleteRecords(olderThan: Date) async throws
+    /// Removes every session record this run has not published: what an earlier run left, whose state nobody keeps
+    /// up to date any more. A session that is still alive comes back with its next event.
+    func removeUnownedSessions() async throws
+}
+
+extension PhoneTransport {
+    /// Transports without messages (test fakes): none ever arrive.
+    public func messages() -> AsyncStream<MessageRecord> { AsyncStream { $0.finish() } }
+    public func consume(message id: UUID) async throws {}
+    public func removeUnownedSessions() async throws {}
+}
+
+/// Thrown by a `PhoneClientTransport` that cannot carry messages.
+public struct MessagesUnsupported: Error, Equatable {
+    public init() {}
 }
 
 /// Thrown by `PhoneClientTransport.submit(decision:)` when a different decision for the same request was saved
@@ -165,4 +214,11 @@ public protocol PhoneClientTransport: Sendable {
     /// again succeeds, a different one throws `AnswerAlreadyRecorded` (transports that cannot tell may accept it
     /// silently; the Mac still only acts on the first valid one).
     func submit(answer: AnswerRecord) async throws
+    /// Saves a message for the Mac to hand to Claude.
+    func submit(message: MessageRecord) async throws
+}
+
+extension PhoneClientTransport {
+    /// Transports without messages (test fakes) refuse them.
+    public func submit(message: MessageRecord) async throws { throw MessagesUnsupported() }
 }

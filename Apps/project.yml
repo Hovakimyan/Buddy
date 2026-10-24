@@ -40,7 +40,7 @@ targets:
           - BuddyMac.cloud.entitlements
           - Resources/sounds/**
           - "**/*.md"
-      # CloudKit link (CloudKit + Foundation only, no AppKit): the iPhone app reuses this folder.
+      # CloudKit link and the character (SwiftUI, CloudKit and Foundation only, no AppKit): the iPhone app reuses this folder.
       - path: Shared
       # Sounds keep their folder (BuddyMac.app/Contents/Resources/sounds/block/*.wav, one subfolder per character):
       # SoundPlayer looks them up in `sounds/<character.soundFolder>`. All CC0, listed in sounds/SOURCES.md, which
@@ -91,7 +91,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.sergeyhovakimyan.buddy.mac
         PRODUCT_NAME: BuddyMac
         INFOPLIST_FILE: BuddyMac/Info.plist
-        # Placeholder icon (BuddyMac/Assets.xcassets/AppIcon.appiconset, made by scripts/make-icons.swift).
+        # App icon (BuddyMac/Assets.xcassets/AppIcon.appiconset): Block, drawn by BuddyMacTests/AppIconArtTests.swift.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # The default entitlements have NO iCloud keys (they would make the ad-hoc build unlaunchable). A signed
         # build opts in with `BUDDY_ENTITLEMENTS=BuddyMac/BuddyMac.cloud.entitlements` on the xcodebuild command
@@ -162,6 +162,9 @@ targets:
     dependencies:
       - package: BuddyKit
         product: BuddyKit
+      # Embedded in BuddyPhone.app/PlugIns: the push service and the long-press view.
+      - target: BuddyNotificationService
+      - target: BuddyNotificationContent
     postBuildScripts:
       # iOS has no public API to read the app's own entitlements, so the app learns from its Info.plist whether it
       # may touch CloudKit (CloudEntitlement in Shared/CloudAvailability.swift). True only for a code signed build
@@ -193,7 +196,7 @@ targets:
         PRODUCT_NAME: BuddyPhone
         INFOPLIST_FILE: BuddyPhone/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        # Placeholder icon (BuddyPhone/Assets.xcassets/AppIcon.appiconset, made by scripts/make-icons.swift): a single
+        # App icon (BuddyPhone/Assets.xcassets/AppIcon.appiconset, drawn by BuddyMacTests/AppIconArtTests.swift): a single
         # 1024 universal icon, which App Store Connect requires for a TestFlight upload.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
@@ -204,6 +207,62 @@ targets:
         CODE_SIGN_ENTITLEMENTS: $(BUDDY_ENTITLEMENTS)
         # The script phase above edits the built Info.plist.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  # Runs when an approval or question push arrives, before iOS shows it: fetches the encrypted record and fills in
+  # the real text, Buddy's picture and the actions. Its own App ID needs iCloud with Buddy's container
+  # (docs/cloudkit-setup.md).
+  BuddyNotificationService:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: BuddyNotificationService
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+      - path: Shared/CloudKitSchema.swift
+      - path: Shared/DisplayText.swift
+      - path: Shared/NotificationDetail.swift
+    dependencies:
+      - package: BuddyKit
+        product: BuddyKit
+      - sdk: UserNotifications.framework
+    settings:
+      base:
+        ENABLE_DEBUG_DYLIB: NO
+        PRODUCT_BUNDLE_IDENTIFIER: com.sergeyhovakimyan.buddy.phone.notifications
+        INFOPLIST_FILE: BuddyNotificationService/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: BuddyNotificationService/BuddyNotificationService.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+
+  # The long-press view of a Buddy notification: Buddy, the whole command or question, one button per answer.
+  BuddyNotificationContent:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: BuddyNotificationContent
+        excludes:
+          - Info.plist
+      - path: Shared/Characters
+      - path: Shared/DisplayText.swift
+      - path: Shared/NotificationDetail.swift
+    dependencies:
+      - package: BuddyKit
+        product: BuddyKit
+      # iOS looks up the extension's context class in UserNotificationsUI before any of its code runs, so the
+      # executable itself must link it (with Xcode's debug dylib only that dylib would, and the extension crashed).
+      - sdk: UserNotificationsUI.framework
+    settings:
+      base:
+        ENABLE_DEBUG_DYLIB: NO
+        PRODUCT_BUNDLE_IDENTIFIER: com.sergeyhovakimyan.buddy.phone.notification-view
+        INFOPLIST_FILE: BuddyNotificationContent/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
 
   # Like BuddyMacTests: not hosted by the app, it compiles the app's sources minus the @main entry file.
   BuddyPhoneTests:

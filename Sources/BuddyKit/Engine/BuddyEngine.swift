@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import OSLog
 
 /// Everything a UI needs to draw: live sessions (most recent first), the approvals waiting for a
 /// decision and the questions waiting for an answer (each in submission order), and how the recent
@@ -63,6 +64,16 @@ public actor BuddyEngine {
     static let askTool = "AskUserQuestion"
     static let planTool = "ExitPlanMode"
 
+    /// How long a finished turn waits for a message from the phone: 10 minutes, as long as the Mac is kept awake
+    /// after the last activity, and under the relay's own wait (`HookClient.stopWaitTimeout`, 610 s) like the other
+    /// timeouts. Using the Mac (`releaseWaitingTurns`), Esc or a prompt in the terminal ends it sooner.
+    public static let stopHoldTimeout: TimeInterval = 600
+    /// A message from the phone older than this when it reaches the Mac (or still queued this long) is dropped:
+    /// it was meant for a moment that has passed.
+    public static let messageMaxAge: TimeInterval = 3600
+    /// The most messages queued for one session; a further one is dropped.
+    static let maxQueuedMessages = 5
+
     /// How often `PhoneBridge.cleanup()` runs while the engine is running.
     static let cleanupInterval: TimeInterval = 60
     /// How many resolved outcomes are kept for `outcome(for:)` (and of questions, for snapshots).
@@ -75,9 +86,14 @@ public actor BuddyEngine {
     private let tickInterval: TimeInterval
     /// Whether someone can answer a question in Buddy right now; asked once per ask.
     private let canAskInBuddy: @Sendable () async -> Bool
+    /// Types a message from the phone into the terminal a session runs in, as the person's own prompt; true when it
+    /// did. Nil: messages only go through the `Stop` hook.
+    public typealias TypeIntoTerminal = @Sendable (TerminalInfo, String) async -> Bool
+    private let typeIntoTerminal: TypeIntoTerminal?
     private let queue: ApprovalQueue
     private let questionQueue: QuestionQueue
     private let bridge: PhoneBridge?
+    private let transport: PhoneTransport?
 
     private var phase = Phase.stopped
     private var store = SessionStore()
@@ -108,6 +124,24 @@ public actor BuddyEngine {
     private var planChoices: [UUID: PlanChoice] = [:]
     private var stopWaiters: [CheckedContinuation<Void, Never>] = []
     private var recentOutcomes: [(id: UUID, outcome: ApprovalOutcome)] = []
+
+    /// A `Stop` held for a message, per session (one at a time: a newer one lets the older go).
+    private struct HeldStop {
+        let id: UUID
+        let deadline: Date
+        let continuation: CheckedContinuation<String?, Never>
+    }
+    private var heldStops: [String: HeldStop] = [:]
+    /// Messages from the phone waiting for their session's turn to end, oldest first.
+    private var queuedMessages: [String: [MessageRecord]] = [:]
+    /// Messages for a session this run has not seen yet (after a restart its next event brings it back), kept until
+    /// it shows up or they are too old.
+    private var parkedMessages: [MessageRecord] = []
+    /// Ids of messages already taken, so a replay is never delivered twice.
+    private var takenMessages: [UUID] = []
+    private var messagesTask: Task<Void, Never>?
+    /// What happened to each message from the phone: ids, sessions and outcomes only, never the text.
+    private static let messageLog = Logger(subsystem: "com.sergeyhovakimyan.buddy", category: "messages")
     private var recentQuestionOutcomes: [QuestionOutcomeRecord] = []
 
     public init(
@@ -117,7 +151,8 @@ public actor BuddyEngine {
         clock: @escaping @Sendable () -> Date = Date.init,
         tickInterval: TimeInterval = 1,
         questionTimeout: TimeInterval = BuddyEngine.defaultQuestionTimeout,
-        canAskInBuddy: @escaping @Sendable () async -> Bool = { true }
+        canAskInBuddy: @escaping @Sendable () async -> Bool = { true },
+        typeIntoTerminal: TypeIntoTerminal? = nil
     ) {
         self.socketPath = socketPath
         self.approvalTimeout = approvalTimeout
@@ -125,6 +160,7 @@ public actor BuddyEngine {
         self.clock = clock
         self.tickInterval = tickInterval
         self.canAskInBuddy = canAskInBuddy
+        self.typeIntoTerminal = typeIntoTerminal
         let queue = ApprovalQueue()
         self.queue = queue
         let questionQueue = QuestionQueue()
@@ -132,6 +168,7 @@ public actor BuddyEngine {
         self.bridge = transport.map {
             PhoneBridge(queue: queue, questionQueue: questionQueue, transport: $0, clock: clock)
         }
+        self.transport = transport
     }
 
     deinit {
@@ -140,8 +177,10 @@ public actor BuddyEngine {
         updatesTask?.cancel()
         questionUpdatesTask?.cancel()
         cleanupTask?.cancel()
+        messagesTask?.cancel()
         syncContinuation?.finish()
         for continuation in subscribers.values { continuation.finish() }
+        for held in heldStops.values { held.continuation.resume(returning: nil) }
         for waiter in stopWaiters { waiter.resume() }
     }
 
@@ -188,6 +227,7 @@ public actor BuddyEngine {
                 bufferingPolicy: .bufferingNewest(1))  // only the latest list matters
             syncContinuation = continuation
             bridgeTask = Task {
+                await bridge.removeLeftovers()
                 await bridge.start()
                 for await sessions in syncs {
                     await bridge.sync(sessions: sessions)
@@ -197,6 +237,15 @@ public actor BuddyEngine {
                 while true {
                     await bridge.cleanup()
                     do { try await Task.sleep(for: .seconds(Self.cleanupInterval)) } catch { return }
+                }
+            }
+        }
+        if let transport {
+            let messages = transport.messages()
+            messagesTask = Task { [weak self] in
+                for await message in messages {
+                    guard let self, !Task.isCancelled else { return }
+                    await self.receive(message: message)
                 }
             }
         }
@@ -228,17 +277,22 @@ public actor BuddyEngine {
             if !inFlight.isEmpty || !questionsInFlight.isEmpty { await Task.yield() }
         }
 
+        // Held stops end now, with no message: Claude stops as it would have without Buddy.
+        for sessionId in Array(heldStops.keys) { releaseStop(sessionId: sessionId, with: nil) }
+
         timerTask?.cancel()
         updatesTask?.cancel()
         questionUpdatesTask?.cancel()
         cleanupTask?.cancel()
+        messagesTask?.cancel()
         syncContinuation?.finish()  // lets the bridge task deliver the last sync, then end
-        let tasks = [timerTask, updatesTask, questionUpdatesTask, cleanupTask, bridgeTask].compactMap { $0 }
+        let tasks = [timerTask, updatesTask, questionUpdatesTask, cleanupTask, bridgeTask, messagesTask].compactMap { $0 }
         timerTask = nil
         updatesTask = nil
         questionUpdatesTask = nil
         cleanupTask = nil
         bridgeTask = nil
+        messagesTask = nil
         syncContinuation = nil
         for task in tasks { await task.value }
         await bridge?.stop()
@@ -311,6 +365,164 @@ public actor BuddyEngine {
         await questionQueue.release(requestId: requestId)
     }
 
+    // MARK: Messages from the phone
+
+    /// Someone is using the Mac: every turn waiting for a phone message ends now, so the terminal is theirs again.
+    public func releaseWaitingTurns() {
+        for sessionId in Array(heldStops.keys) { releaseStop(sessionId: sessionId, with: nil) }
+    }
+
+    /// A message from the phone (untrusted). Taken once, while it is recent, and only as plain text of 1 to
+    /// `MessageRecord.maxLength` characters (control characters other than line breaks and tabs are dropped). A held
+    /// turn for its session gets it at once; otherwise it waits for the session's next finished turn. A message for a
+    /// session this run has not seen is parked until that session's next event. It leaves the cloud only once it is
+    /// handed to Claude, so a restart before that does not lose it. Returns whether it was taken (queued, parked or
+    /// handed over).
+    @discardableResult
+    public func receive(message: MessageRecord) async -> Bool {
+        let id = message.messageId
+        let session = message.sessionId
+        guard phase == .running, !takenMessages.contains(id) else { return false }
+        let now = clock()
+        guard now.timeIntervalSince(message.sentAt) <= Self.messageMaxAge else {
+            Self.messageLog.notice("message \(id, privacy: .public) refused: too old")
+            return false
+        }
+        guard let text = Self.cleaned(message.text) else {
+            Self.messageLog.notice("message \(id, privacy: .public) refused: empty or too long")
+            return false
+        }
+        takenMessages.append(message.messageId)
+        if takenMessages.count > Self.recentOutcomeLimit { takenMessages.removeFirst() }
+
+        var cleaned = message
+        cleaned.text = text
+        let late = Int(now.timeIntervalSince(message.sentAt) * 1000)
+        if !store.sessions.contains(where: { $0.id == session }) {
+            guard parkedMessages.count < Self.maxQueuedMessages * 4 else { return false }
+            parkedMessages.append(cleaned)
+            Self.messageLog.notice("message \(id, privacy: .public) parked until session \(session, privacy: .public) shows up")
+        } else if await typed(text, into: session) {
+            consume(message)
+            Self.messageLog.notice("message \(id, privacy: .public) typed into the terminal of session \(session, privacy: .public), \(late, privacy: .public) ms after sending")
+        } else if heldStops[message.sessionId] != nil {
+            store.notePrompt(text, sessionId: message.sessionId)  // before the release, which publishes the session
+            releaseStop(sessionId: message.sessionId, with: text)
+            consume(message)
+            Self.messageLog.notice("message \(id, privacy: .public) handed to waiting session \(session, privacy: .public), \(late, privacy: .public) ms after sending")
+        } else {
+            var queue = queuedMessages[message.sessionId, default: []]
+            guard queue.count < Self.maxQueuedMessages else {
+                Self.messageLog.notice("message \(id, privacy: .public) refused: queue of \(session, privacy: .public) full")
+                return false
+            }
+            queue.append(cleaned)
+            queuedMessages[message.sessionId] = queue
+            sessionsChanged()
+            Self.messageLog.notice("message \(id, privacy: .public) queued for session \(session, privacy: .public) until its turn ends, \(late, privacy: .public) ms after sending")
+        }
+        return true
+    }
+
+    /// Whether this Mac can type into the session's terminal (see `TerminalInfo.isTypable`).
+    private func canType(sessionId: String) -> Bool {
+        typeIntoTerminal != nil && store.sessions.first { $0.id == sessionId }?.terminal?.isTypable == true
+    }
+
+    /// Types `text` into the session's terminal as a prompt, when it can: one line only (a line break would send the
+    /// first line on its own). A turn waiting for a message ends first, so the typed prompt is taken at once.
+    private func typed(_ text: String, into sessionId: String) async -> Bool {
+        guard let typeIntoTerminal, !text.contains("\n"),
+              let terminal = store.sessions.first(where: { $0.id == sessionId })?.terminal, terminal.isTypable
+        else { return false }
+        releaseStop(sessionId: sessionId, with: nil)
+        return await typeIntoTerminal(terminal, text)
+    }
+
+    /// Removes a message handed to Claude from the cloud, so no later run delivers it again.
+    private func consume(_ message: MessageRecord) {
+        guard let transport else { return }
+        let id = message.messageId
+        Task { try? await transport.consume(message: id) }
+    }
+
+    /// Moves the messages parked for `sessionId` into its queue (its first event since they arrived).
+    private func unpark(sessionId: String) {
+        let arrived = parkedMessages.filter { $0.sessionId == sessionId }
+        guard !arrived.isEmpty else { return }
+        parkedMessages.removeAll { $0.sessionId == sessionId }
+        var queue = queuedMessages[sessionId, default: []]
+        queue.append(contentsOf: arrived.prefix(Self.maxQueuedMessages - queue.count))
+        queuedMessages[sessionId] = queue
+        for message in arrived {
+            Self.messageLog.notice("message \(message.messageId, privacy: .public) queued: session \(sessionId, privacy: .public) showed up")
+        }
+    }
+
+    /// Plain text a message may carry: trimmed, control characters other than line breaks and tabs dropped,
+    /// 1 to `MessageRecord.maxLength` characters. Nil when nothing is left or it is too long.
+    static func cleaned(_ text: String) -> String? {
+        let kept = String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            $0 == "\n" || $0 == "\t" || !(CharacterSet.controlCharacters.contains($0) || $0.properties.generalCategory == .format)
+        }))
+        let trimmed = kept.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= MessageRecord.maxLength else { return nil }
+        return trimmed
+    }
+
+    /// A `Stop` from `buddy-hook --stop`: the main conversation finished its turn. A queued message is handed over
+    /// at once; otherwise the turn waits (up to `stopHoldTimeout`) for one. The person can always end the wait
+    /// in the terminal (Esc closes the hook's connection, which cancels this).
+    private func holdStop(for event: HookEvent) async -> HookReply? {
+        guard event.name == .stop, event.agentId == nil else { return nil }
+        let sessionId = event.sessionId
+        unpark(sessionId: sessionId)
+        if let message = takeQueuedMessage(sessionId: sessionId) {
+            consume(message)
+            store.notePrompt(message.text, sessionId: sessionId)
+            sessionsChanged()
+            Self.messageLog.notice("message \(message.messageId, privacy: .public) handed to session \(sessionId, privacy: .public) as its turn ended")
+            return .message(message.text)
+        }
+        guard phase == .running else { return nil }
+        // A message can be typed into this session's terminal whenever it comes: nothing needs to wait.
+        guard !canType(sessionId: sessionId) else { return nil }
+        Self.messageLog.notice("session \(sessionId, privacy: .public) finished its turn: waiting for a message")
+        releaseStop(sessionId: sessionId, with: nil)  // one wait per session
+        let id = UUID()
+        let deadline = clock().addingTimeInterval(Self.stopHoldTimeout)
+        let text = await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                if Task.isCancelled {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                heldStops[sessionId] = HeldStop(id: id, deadline: deadline, continuation: continuation)
+                sessionsChanged()
+            }
+        } onCancel: {
+            Task { await self.releaseStop(sessionId: sessionId, id: id) }
+        }
+        return text.map(HookReply.message)
+    }
+
+    private func takeQueuedMessage(sessionId: String) -> MessageRecord? {
+        guard var queue = queuedMessages[sessionId], !queue.isEmpty else { return nil }
+        let first = queue.removeFirst()
+        queuedMessages[sessionId] = queue.isEmpty ? nil : queue
+        sessionsChanged()
+        return first
+    }
+
+    /// Ends the session's held turn (only the one with `id`, when given): with a message Claude carries on, with
+    /// nil it stops.
+    private func releaseStop(sessionId: String, id: UUID? = nil, with text: String? = nil) {
+        guard let held = heldStops[sessionId], id == nil || held.id == id else { return }
+        heldStops[sessionId] = nil
+        held.continuation.resume(returning: text)
+        sessionsChanged()
+    }
+
     // MARK: Test hooks
 
     var hasPhoneBridge: Bool { bridge != nil }
@@ -329,6 +541,9 @@ public actor BuddyEngine {
 
     private func handle(_ event: HookEvent) async -> HookReply? {
         guard phase == .running else { return nil }
+        // The `--stop` relay's copy of a Stop: only about messages. The plain relay's copy, in order, is the one
+        // applied to the session.
+        if event.isStopWait { return await holdStop(for: event) }
         switch event.name {
         case .permissionRequest:
             return await requestApproval(for: event)
@@ -348,14 +563,18 @@ public actor BuddyEngine {
                 if let question { await questionQueue.cancel(requestId: question.id) }
             }
         case .sessionEnd:
-            // The session is gone: nobody waits on any of its requests.
+            // The session is gone: nobody waits on any of its requests, and its messages have nowhere to go.
             await queue.cancel(sessionId: event.sessionId)
             await questionQueue.cancel(sessionId: event.sessionId)
+            releaseStop(sessionId: event.sessionId)
+            queuedMessages[event.sessionId] = nil
         case .stop, .stopFailure, .userPromptSubmit:
             // The main turn ended or a new prompt was typed: the main conversation's requests were answered.
             // Background subagents can outlive the turn, and their open requests still wait in the terminal.
             await queue.cancel(sessionId: event.sessionId, agentId: nil)
             await questionQueue.cancel(sessionId: event.sessionId, agentId: nil)
+            // A prompt typed in the terminal: the person is back, so a turn held for the phone is over.
+            if event.name == .userPromptSubmit { releaseStop(sessionId: event.sessionId) }
         case .subagentStop:
             // The subagent finished: nothing of its is waiting any more.
             if let agentId = event.agentId {
@@ -495,6 +714,7 @@ public actor BuddyEngine {
 
     private func apply(_ event: HookEvent) {
         store.apply(event, now: clock())
+        unpark(sessionId: event.sessionId)
         sessionsChanged()
     }
 
@@ -520,6 +740,12 @@ public actor BuddyEngine {
         guard phase == .running else { return }
         let now = clock()
         store.expire(now: now)
+        for (sessionId, held) in heldStops where held.deadline <= now { releaseStop(sessionId: sessionId, with: nil) }
+        for (sessionId, queue) in queuedMessages {
+            let fresh = queue.filter { now.timeIntervalSince($0.sentAt) <= Self.messageMaxAge }
+            queuedMessages[sessionId] = fresh.isEmpty ? nil : fresh
+        }
+        parkedMessages.removeAll { now.timeIntervalSince($0.sentAt) > Self.messageMaxAge }
         sessionsChanged()
         await queue.expireDue(now: now)
         await questionQueue.expireDue(now: now)
@@ -539,7 +765,7 @@ public actor BuddyEngine {
     private func sessionsChanged() {
         publishSnapshot()
         guard let syncContinuation else { return }
-        let sessions = store.sessions
+        let sessions = currentSessions
         guard sessions != lastSynced else { return }
         lastSynced = sessions
         syncContinuation.yield(sessions)
@@ -547,11 +773,23 @@ public actor BuddyEngine {
 
     private func publishSnapshot() {
         let snapshot = EngineSnapshot(
-            sessions: store.sessions, pending: pending, questions: questions,
+            sessions: currentSessions, pending: pending, questions: questions,
             recentQuestionOutcomes: recentQuestionOutcomes)
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
         for continuation in subscribers.values { continuation.yield(snapshot) }
+    }
+
+    /// The store's sessions with what only the engine knows: a turn held for a message, and queued messages.
+    private var currentSessions: [Session] {
+        store.sessions.map { session in
+            var session = session
+            // Waiting for a message: a turn held for one, or a finished session a message can be typed into.
+            session.awaitingMessage = heldStops[session.id] != nil
+                || (canType(sessionId: session.id) && (session.state == .finished || session.state == .idle))
+            session.queuedMessages = queuedMessages[session.id]?.count ?? 0
+            return session
+        }
     }
 
     private func removeSubscriber(_ token: UUID) {

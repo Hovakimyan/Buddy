@@ -28,6 +28,10 @@ enum PhoneError: Error, Equatable, LocalizedError {
     case submitFailed(String)
     /// A pick is missing, or a pick is not one of the question's options (nothing is sent).
     case incompleteAnswer
+    /// The message is empty or longer than `MessageRecord.maxLength` (nothing is sent).
+    case unsendableMessage
+    /// The session is not on this phone any more (it ended on the Mac).
+    case unknownSession
 
     var errorDescription: String? {
         switch self {
@@ -45,6 +49,8 @@ enum PhoneError: Error, Equatable, LocalizedError {
         case .answeredEarlier(nil): "This request already had an answer, and that answer counts."
         case .submitFailed(let message): "Could not send your answer (\(message)). Try again."
         case .incompleteAnswer: "Pick an answer for every question first. Nothing was sent."
+        case .unsendableMessage: "Type a message of up to \(MessageRecord.maxLength) characters. Nothing was sent."
+        case .unknownSession: "This session has ended on your Mac. Nothing was sent."
         }
     }
 }
@@ -61,8 +67,15 @@ final class PhoneModel {
     static let authenticationReason = "Allow this Claude Code request"
     /// What the Face ID prompt says when sending an answer to a question: generic too.
     static let answerAuthenticationReason = "Send this answer to Claude"
+    /// Sessions with no event for this long are not shown (see `start()`).
+    static let staleSessionAge: TimeInterval = 35 * 60
+    /// What the Face ID prompt says when sending a message: generic too.
+    static let messageAuthenticationReason = "Send this message to Claude"
 
     private(set) var sessions: [SessionRecord] = []
+    /// False until the first list of sessions arrived (the transport sends one after its first fetch): the screen
+    /// shows a loading state until then, not an empty list.
+    private(set) var hasLoaded = false
     /// Every approval the Mac published and the transport still has, whatever its status.
     private(set) var approvals: [ApprovalRecord] = []
     /// Every question the Mac published and the transport still has, whatever its status.
@@ -73,6 +86,8 @@ final class PhoneModel {
     private var answered: [UUID: [[String]]] = [:]
     /// Requests with a decision in progress (the prompt is up, or the submit is running).
     private var inFlight: Set<UUID> = []
+    /// Messages this phone sent, per session, oldest first (this run only).
+    private(set) var sentMessages: [String: [MessageRecord]] = [:]
 
     @ObservationIgnored private let transport: any PhoneClientTransport
     @ObservationIgnored private let authenticator: any Authenticating
@@ -110,6 +125,11 @@ final class PhoneModel {
     /// The model's clock (the views draw countdowns and the arming delay from the same time the rules use).
     var now: Date { clock() }
 
+    /// The project name of a session, for display (sanitized); nil when the session is not known.
+    func project(of sessionId: String) -> String? {
+        sessions.first { $0.sessionId == sessionId }.map { DisplayText.sanitized($0.project) }
+    }
+
     func approval(id: UUID) -> ApprovalRecord? {
         approvals.first { $0.requestId == id }
     }
@@ -134,7 +154,14 @@ final class PhoneModel {
         let questionStream = transport.questions()
         tasks = [
             Task { [weak self] in
-                for await sessions in sessionStream { self?.sessions = sessions }
+                for await sessions in sessionStream {
+                    guard let self else { return }
+                    // A session quiet this long is gone on the Mac (it drops them after 30 minutes): a record still
+                    // here is a leftover whose state nobody updates, so it is not shown.
+                    let now = self.clock()
+                    self.sessions = sessions.filter { now.timeIntervalSince($0.updatedAt) < Self.staleSessionAge }
+                    self.hasLoaded = true
+                }
             },
             Task { [weak self] in
                 for await approvals in approvalStream { self?.approvals = approvals }
@@ -194,17 +221,65 @@ final class PhoneModel {
     /// to `timeout`) for the request to be fetched from the cloud, polling with a growing pause (0.1 s, doubling
     /// up to 1 s), then applies `deny` with all its checks (still pending, not expired, not answered).
     func denyFromNotification(_ id: UUID, timeout: Duration = .seconds(20)) async throws {
+        try await waitFor(timeout: timeout) { $0.approval(id: id) != nil }
+        try await deny(id)
+    }
+
+    /// Allow from a notification's long-press. The iPhone was unlocked to tap it (the action requires it), which stands
+    /// in for Face ID. Only for a command short, whole and plain enough to read in full there
+    /// (`NotificationDetail.canAllowHere`), and only if it is exactly the command the notification showed
+    /// (`shownSummary`); otherwise the same checks as Allow. Waits for the request like `denyFromNotification`.
+    func allowFromNotification(_ id: UUID, shownSummary: String?, timeout: Duration = .seconds(20)) async throws {
+        try await waitFor(timeout: timeout) { $0.approval(id: id) != nil }
+        let approval = try decidable(id)
+        guard !approval.isTruncated, approval.canBeAllowedOnPhone else {
+            throw approval.isTruncated ? PhoneError.tooLongToAllow : PhoneError.notPlainText
+        }
+        guard NotificationDetail.canAllowHere(approval) else { throw PhoneError.tooLongToAllow }
+        guard let shownSummary, shownSummary == DisplayText.sanitized(approval.summary) else {
+            throw PhoneError.changedWhileAuthenticating
+        }
+        try begin(id)
+        defer { inFlight.remove(id) }
+        try await submit(.allow, for: id)
+    }
+
+    /// Answer from a notification's long-press: option `option` of a single question with one choice (the only kind
+    /// the long-press offers; anything else throws `incompleteAnswer`). The iPhone was unlocked to tap it.
+    func answerFromNotification(_ id: UUID, option: Int, timeout: Duration = .seconds(20)) async throws {
+        try await waitFor(timeout: timeout) { $0.question(id: id) != nil }
+        let question = try answerable(id)
+        guard NotificationDetail.canAnswerHere(question), let only = question.questions.first,
+              only.options.indices.contains(option)
+        else { throw PhoneError.incompleteAnswer }
+        try begin(id)
+        defer { inFlight.remove(id) }
+        let responses = [[only.options[option].label]]
+        let record = AnswerRecord(requestId: id, responses: responses, answeredAt: clock())
+        do {
+            try await transport.submit(answer: record)
+        } catch let earlier as AnswerAlreadyRecorded {
+            if let standing = earlier.responses { answered[id] = standing }
+            throw PhoneError.answeredEarlier(nil)
+        } catch {
+            throw PhoneError.submitFailed(error.localizedDescription)
+        }
+        answered[id] = responses
+    }
+
+    /// Polls the cloud (0.1 s, doubling up to 1 s) until `ready`, for at most `timeout`: a notification action wakes
+    /// the app with only a request id.
+    private func waitFor(timeout: Duration, _ ready: (PhoneModel) -> Bool) async throws {
         start()
         let deadline = ContinuousClock.now + timeout
         var delay = Self.firstPollDelay
-        while approval(id: id) == nil {
+        while !ready(self) {
             guard !Task.isCancelled else { throw CancellationError() }
             guard ContinuousClock.now < deadline else { throw PhoneError.unknownApproval }
             await refresh()
             await pause(delay)
             delay = min(delay * 2, Self.longestPollDelay)
         }
-        try await deny(id)
     }
 
     static let firstPollDelay: Duration = .milliseconds(100)
@@ -243,6 +318,24 @@ final class PhoneModel {
     /// pending, unexpired and not yet answered from this phone, only after Face ID / passcode, like Allow. Every
     /// pick must be one of that question's options: free text never comes from the phone. Throws `PhoneError`;
     /// in every failure nothing is submitted.
+    /// A message for Claude in session `sessionId`, sent only after Face ID / passcode. The Mac hands it over when
+    /// Claude's turn ends (at once if it is waiting). Throws `PhoneError`; in every failure nothing is sent.
+    func send(message text: String, to sessionId: String) async throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= MessageRecord.maxLength else { throw PhoneError.unsendableMessage }
+        guard sessions.contains(where: { $0.sessionId == sessionId }) else { throw PhoneError.unknownSession }
+        guard await authenticator.authenticate(reason: Self.messageAuthenticationReason) else {
+            throw PhoneError.notAuthenticated
+        }
+        let record = MessageRecord(messageId: UUID(), sessionId: sessionId, text: trimmed, sentAt: clock())
+        do {
+            try await transport.submit(message: record)
+        } catch {
+            throw PhoneError.submitFailed(error.localizedDescription)
+        }
+        sentMessages[sessionId, default: []].append(record)
+    }
+
     func answer(_ id: UUID, responses: [[String]]) async throws {
         let shown = try answerable(id)
         guard Self.fits(responses, shown.questions) else { throw PhoneError.incompleteAnswer }

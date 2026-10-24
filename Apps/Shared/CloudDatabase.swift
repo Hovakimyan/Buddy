@@ -96,14 +96,23 @@ enum CloudKitFailure: Equatable {
 struct CKDatabaseAdapter: CloudDatabase {
     let database: CKDatabase
 
+    /// Every call here has a person waiting on it (a card on the Mac, a tap on the phone): run it as user initiated,
+    /// not at CloudKit's default priority, which the system may hold back.
+    private func urgent<T: Sendable>(_ body: (CKDatabase) async throws -> T) async throws -> T {
+        let configuration = CKOperation.Configuration()
+        configuration.qualityOfService = .userInitiated
+        return try await database.configuredWith(configuration: configuration) { try await body($0) }
+    }
+
     func saveZone(_ zone: CKRecordZone) async throws {
         let (saved, _) = try await database.modifyRecordZones(saving: [zone], deleting: [])
         for result in saved.values { _ = try result.get() }
     }
 
     func save(_ records: [CKRecord], policy: CKModifyRecordsOperation.RecordSavePolicy) async throws {
-        let (saved, _) = try await database.modifyRecords(
-            saving: records, deleting: [], savePolicy: policy, atomically: false)
+        let (saved, _) = try await urgent {
+            try await $0.modifyRecords(saving: records, deleting: [], savePolicy: policy, atomically: false)
+        }
         for result in saved.values { _ = try result.get() }
     }
 
@@ -123,7 +132,8 @@ struct CKDatabaseAdapter: CloudDatabase {
         var cursor = try token.flatMap(Self.unarchive)
         var all = ZoneChanges()
         while true {
-            let page = try await database.recordZoneChanges(inZoneWith: zoneID, since: cursor)
+            let since = cursor
+            let page = try await urgent { try await $0.recordZoneChanges(inZoneWith: zoneID, since: since) }
             all.absorb(
                 modifications: page.modificationResultsByID.map { id, result in
                     (id, result.map { ChangedRecord(record: $0.record, modifiedAt: $0.record.modificationDate) })

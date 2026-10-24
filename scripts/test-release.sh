@@ -507,7 +507,7 @@ else
   assert "app build number is 42" test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${APP}/Contents/Info.plist")" = "42"
   assert "app version is ${VERSION}" test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")" = "${VERSION}"
 
-  assert "app carries the placeholder icon (AppIcon.icns)" test -f "${APP}/Contents/Resources/AppIcon.icns"
+  assert "app carries its icon (AppIcon.icns)" test -f "${APP}/Contents/Resources/AppIcon.icns"
   assert "app Info.plist names the icon (CFBundleIconName AppIcon)" test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "${APP}/Contents/Info.plist")" = "AppIcon"
   assert "app carries sounds/SOURCES.md, identical to the committed file" cmp -s "${APP}/Contents/Resources/sounds/SOURCES.md" "${SOURCES}"
   assert "app carries no THIRD-PARTY-NOTICES.md" test ! -e "${APP}/Contents/Resources/THIRD-PARTY-NOTICES.md"

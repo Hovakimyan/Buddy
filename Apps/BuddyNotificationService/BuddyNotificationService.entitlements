@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The notification service reads the request a push is about from Buddy's private database, so it needs the
+	     same iCloud container as the app: its App ID (com.sergeyhovakimyan.buddy.phone.notifications) has iCloud with
+	     CloudKit and iCloud.com.sergeyhovakimyan.buddy ticked. Always present: iOS device builds are always signed with
+	     a team, and the simulator does not enforce entitlements. No push key: the app receives the push. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.sergeyhovakimyan.buddy</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+</dict>
+</plist>

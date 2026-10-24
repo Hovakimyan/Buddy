@@ -44,6 +44,7 @@ public struct SessionStore: Sendable {
         if let tool = e.toolName {
             session.lastTool = tool
         }
+        if let terminal = e.terminal { session.terminal = terminal }
         switch e.name {
         case .sessionStart:
             session.state = .idle
@@ -56,6 +57,10 @@ public struct SessionStore: Sendable {
             session.activity = .thinking
             session.toolCount = 0
             session.awaitingAgents = false
+            if let prompt = e.prompt {
+                session.lastPrompt = Session.keptPrompt(prompt)
+                session.lastReply = nil  // the reply shown belongs to this prompt once it comes
+            }
         case .preToolUse:
             session.state = .working
             session.activity = e.toolName.map(Self.searchingTools.contains) == true ? .searching : .none
@@ -76,6 +81,7 @@ public struct SessionStore: Sendable {
             if !e.isIdlePrompt { session.state = .waiting }
             if let activity = Self.activity(fromNotification: e.message) { session.activity = activity }
         case .stop:
+            if let reply = e.lastAssistantMessage { session.lastReply = Session.keptReply(reply) }
             // Background subagents can outlive the main turn: then the session waits on them.
             session.awaitingAgents = !session.agents.isEmpty
             session.state = session.awaitingAgents ? .working : .finished
@@ -120,6 +126,14 @@ public struct SessionStore: Sendable {
         } else {
             session.agents.append(agent)
         }
+    }
+
+    /// A message from the phone was handed to Claude as its next prompt: it is what the next reply answers.
+    public mutating func notePrompt(_ text: String, sessionId: String) {
+        guard var session = byId[sessionId] else { return }
+        session.lastPrompt = Session.keptPrompt(text)
+        session.lastReply = nil
+        byId[sessionId] = session
     }
 
     /// Removes sessions with no event for `idleTimeout`, subagents with no event for `agentIdleTimeout`, and

@@ -32,12 +32,14 @@ public final class InMemoryCloud: Sendable {
             var decisions: [DecisionRecord] = []
             var questions: [UUID: QuestionRecord] = [:]
             var answers: [AnswerRecord] = []
+            var messages: [MessageRecord] = []
             var pendingFailures = 0
             var sessionSubscribers: [UUID: AsyncStream<[SessionRecord]>.Continuation] = [:]
             var approvalSubscribers: [UUID: AsyncStream<[ApprovalRecord]>.Continuation] = [:]
             var decisionSubscribers: [UUID: AsyncStream<DecisionRecord>.Continuation] = [:]
             var questionSubscribers: [UUID: AsyncStream<[QuestionRecord]>.Continuation] = [:]
             var answerSubscribers: [UUID: AsyncStream<AnswerRecord>.Continuation] = [:]
+            var messageSubscribers: [UUID: AsyncStream<MessageRecord>.Continuation] = [:]
 
             var sessionSnapshot: [SessionRecord] {
                 sessions.values.sorted { $0.sessionId < $1.sessionId }
@@ -147,6 +149,17 @@ public final class InMemoryCloud: Sendable {
                 initial: { $0.answers })
         }
 
+        func messages() -> AsyncStream<MessageRecord> {
+            core.subscribe(
+                register: { $0.messageSubscribers[$1] = $2 },
+                unregister: { $0.messageSubscribers[$1] = nil },
+                initial: { $0.messages })
+        }
+
+        func consume(message id: UUID) async throws {
+            core.state.withLock { $0.messages.removeAll { $0.messageId == id } }
+        }
+
         /// Removes approvals and questions created, and decisions and answers made, before `olderThan`.
         /// Session records are left alone: they are owned by `removeSession` and a quiet session is still live.
         func deleteRecords(olderThan: Date) async throws {
@@ -198,6 +211,13 @@ public final class InMemoryCloud: Sendable {
             core.state.withLock { state in
                 state.answers.append(answer)
                 for continuation in state.answerSubscribers.values { continuation.yield(answer) }
+            }
+        }
+
+        func submit(message: MessageRecord) async throws {
+            core.state.withLock { state in
+                state.messages.append(message)
+                for continuation in state.messageSubscribers.values { continuation.yield(message) }
             }
         }
     }

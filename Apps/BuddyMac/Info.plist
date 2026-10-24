@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Buddy types the messages you send from your iPhone into the iTerm2 or Terminal tab where that Claude Code session runs, so they show as your own prompt.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Sergey Hovakimyan</string>
 	<key>CFBundleDevelopmentRegion</key>

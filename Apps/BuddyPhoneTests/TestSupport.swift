@@ -48,6 +48,7 @@ final class RecordingTransport: PhoneClientTransport {
         var questionSubscribers: [UUID: AsyncStream<[QuestionRecord]>.Continuation] = [:]
         var submitted: [DecisionRecord] = []
         var submittedAnswers: [AnswerRecord] = []
+        var submittedMessages: [MessageRecord] = []
         var failSubmits = false
         var alreadyRecorded: DecisionAlreadyRecorded?
         var answerAlreadyRecorded: AnswerAlreadyRecorded?
@@ -56,6 +57,21 @@ final class RecordingTransport: PhoneClientTransport {
 
     var submitted: [DecisionRecord] { state.withLock { $0.submitted } }
     var submittedAnswers: [AnswerRecord] { state.withLock { $0.submittedAnswers } }
+    var submittedMessages: [MessageRecord] { state.withLock { $0.submittedMessages } }
+
+    func push(sessions: [SessionRecord]) {
+        state.withLock { state in
+            state.sessions = sessions
+            for continuation in state.sessionSubscribers.values { continuation.yield(sessions) }
+        }
+    }
+
+    func submit(message: MessageRecord) async throws {
+        try state.withLock { state in
+            if state.failSubmits { throw SubmitFailure() }
+            state.submittedMessages.append(message)
+        }
+    }
     /// Makes every submit (decision or answer) fail.
     func failSubmits(_ fail: Bool) { state.withLock { $0.failSubmits = fail } }
     /// Makes every submit report that another decision was saved first.

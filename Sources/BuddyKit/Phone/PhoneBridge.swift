@@ -89,6 +89,12 @@ public actor PhoneBridge {
     /// Number of publish tasks currently alive (running or waiting to retry).
     var inFlightPublishCount: Int { inFlight.count }
 
+    /// Removes the session records an earlier run left behind (best effort): their state is stale, and the phone
+    /// would show it as live. Called before `start()`, so nothing this run publishes can be caught by it.
+    public func removeLeftovers() async {
+        try? await transport.removeUnownedSessions()
+    }
+
     /// Begins mirroring queue changes and consuming phone decisions and answers. A no-op if already started.
     public func start() {
         guard !running else { return }
@@ -156,7 +162,10 @@ public actor PhoneBridge {
                 project: session.project,
                 lastTool: session.lastTool,
                 updatedAt: session.updatedAt,
-                agentCount: session.agents.count)
+                agentCount: session.agents.count,
+                awaitingMessage: session.awaitingMessage,
+                lastPrompt: session.lastPrompt,
+                lastReply: session.lastReply)
             // Skips syncs that carry no new event: activity/recentTools-only changes keep the same
             // `updatedAt` (every store event bumps it), so the phone-visible record is equal.
             guard publishedSessions[session.id] != record else { continue }

@@ -19,4 +19,6 @@ public enum HookReply: Sendable, Equatable {
     /// Answers to an `AskUserQuestion`, keyed by question text; a multi-select answer joins its
     /// labels with ", ".
     case answers([String: String])
+    /// A message from the phone for a `Stop` that waits for one: Claude does not stop but carries on with it.
+    case message(String)
 }

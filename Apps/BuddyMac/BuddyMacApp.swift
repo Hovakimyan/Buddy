@@ -15,7 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selector: .live,
         makeEngine: { transport, canAskInBuddy in
             BuddyEngine(
-                socketPath: HookSocketServer.defaultSocketPath(), transport: transport, canAskInBuddy: canAskInBuddy)
+                socketPath: HookSocketServer.defaultSocketPath(), transport: transport, canAskInBuddy: canAskInBuddy,
+                typeIntoTerminal: { terminal, text in await TerminalTyper.type(terminal, text) })
         },
         loginItem: LaunchEnvironment.loginItem(environment: ProcessInfo.processInfo.environment),
         setupMemory: LaunchEnvironment.setupMemory(environment: ProcessInfo.processInfo.environment))

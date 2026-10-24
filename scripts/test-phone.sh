@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Tests for scripts/phone-signed-build.sh, scripts/testflight.sh, scripts/lib/common.sh and the placeholder app icons.
+# Tests for scripts/phone-signed-build.sh, scripts/testflight.sh, scripts/lib/common.sh and the app icons.
 #
 # Safe by design and needs neither a device nor an Apple account: every tool the scripts call (xcodegen, xcodebuild,
 # xcrun/devicectl) is replaced by a FAKE on PATH that only records its arguments (and, for build and archive, makes a
@@ -851,7 +851,7 @@ assert_has "mask: regular expression characters in a secret are taken literally"
 assert_has "mask: a path with a space is masked" "${lib_out}" "b ABXCCD <KEY>"
 assert_has "mask: the Team ID is masked case-insensitively" "${lib_out}" "<KEY> <TEAM> <TEAM>"
 
-# ---- the placeholder app icons -------------------------------------------------------------------------------------
+# ---- the app icons --------------------------------------------------------------------------------------------------
 
 PHONE_ICONS="${REPO_ROOT}/Apps/BuddyPhone/Assets.xcassets/AppIcon.appiconset"
 MAC_ICONS="${REPO_ROOT}/Apps/BuddyMac/Assets.xcassets/AppIcon.appiconset"
@@ -869,14 +869,7 @@ assert "every Mac icon file named in Contents.json exists" bash -c 'for i in 0 1
 assert "project.yml wires the BuddyPhone icon" bash -c 'awk "/^  BuddyPhone:/{p=1} /^  BuddyPhoneTests:/{p=0} p && /ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon/{f=1} END{exit !f}" "$1"' _ "${REPO_ROOT}/Apps/project.yml"
 assert "project.yml wires the BuddyMac icon" bash -c 'awk "/^  BuddyMac:/{p=1} /^  BuddyHook:/{p=0} p && /ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon/{f=1} END{exit !f}" "$1"' _ "${REPO_ROOT}/Apps/project.yml"
 assert "the unit-test targets do not carry the app icon catalog" bash -c '[ "$(grep -c "^          - Assets.xcassets" "$1")" = "2" ]' _ "${REPO_ROOT}/Apps/project.yml"
-assert "make-icons.swift loads no existing artwork (it draws from scratch)" bash -c '! grep -qE "NSImage\(|UIImage\(|CGImageSourceCreate|contentsOf" "$1"' _ "${SCRIPT_DIR}/make-icons.swift"
-if command -v swiftc >/dev/null 2>&1; then
-  # swiftc leaves a TemporaryDirectory.* folder in TMPDIR; give it one inside WORK, which the trap removes.
-  mkdir -p "${WORK}/swiftc-tmp"
-  assert "make-icons.swift type-checks (not run)" env TMPDIR="${WORK}/swiftc-tmp" swiftc -typecheck "${SCRIPT_DIR}/make-icons.swift"
-else
-  printf 'skip swiftc type-check (swiftc not found)\n'
-fi
+assert "the app icon generator exists" test -f "${REPO_ROOT}/Apps/BuddyMacTests/AppIconArtTests.swift"
 
 # ---- hygiene -------------------------------------------------------------------------------------------------------
 

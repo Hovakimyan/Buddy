@@ -17,9 +17,9 @@ public enum HookSocketError: Error, Sendable, Equatable {
 ///
 /// One connection carries one newline-terminated JSON line (the hook payload, at most
 /// `HookEvent.maxPayloadSize` bytes before the newline). For an event that `waitsForReply` (a
-/// `PermissionRequest`, or an `AskUserQuestion` call the relay marked with `buddy_ask`) the server
-/// answers with one reply line (`{"decision":"allow"|"deny"}`, `{"plan":"<choice>"}` or
-/// `{"answers":{...}}`); in every other case it closes silently. After its line the client only
+/// `PermissionRequest`, an `AskUserQuestion` call the relay marked with `buddy_ask`, or a `Stop` it marked with
+/// `buddy_stop`) the server answers with one reply line (`{"decision":"allow"|"deny"}`, `{"plan":"<choice>"}`,
+/// `{"answers":{...}}` or `{"message":"..."}`); in every other case it closes silently. After its line the client only
 /// reads; if it closes the connection instead, the server stops waiting for a reply
 /// (`PermissionConnection`).
 enum HookWire {
@@ -34,11 +34,12 @@ enum HookWire {
     /// Replies are small (answers can carry a few free-text values); anything longer is garbage.
     static let maxReplyBytes = 64 * 1024
 
-    /// One reply line. Exactly one key is set: `decision`, `plan` or `answers`.
+    /// One reply line. Exactly one key is set: `decision`, `plan`, `answers` or `message`.
     private struct Reply: Decodable {
         let decision: String?
         let plan: String?
         let answers: [String: String]?
+        let message: String?
     }
 
     static func replyLine(for reply: HookReply) -> Data {
@@ -47,22 +48,24 @@ enum HookWire {
         case .decision(let decision): object = ["decision": decision.rawValue]
         case .plan(let choice): object = ["plan": choice.rawValue]
         case .answers(let answers): object = ["answers": answers]
+        case .message(let text): object = ["message": text]
         }
         var line = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
         line.append(0x0A)
         return line
     }
 
-    /// Only the exact shapes `replyLine` writes count: `allow`/`deny`, a known plan choice, or an
-    /// object of strings. Anything else, or anything longer than `maxReplyBytes`, is "no reply".
+    /// Only the exact shapes `replyLine` writes count: `allow`/`deny`, a known plan choice, an object of strings,
+    /// or a string message. Anything else, or anything longer than `maxReplyBytes`, is "no reply".
     static func reply(fromReply data: Data) -> HookReply? {
         guard data.count <= maxReplyBytes,
               let reply = try? JSONDecoder().decode(Reply.self, from: data)
         else { return nil }
-        switch (reply.decision, reply.plan, reply.answers) {
-        case (let raw?, nil, nil): return Decision(rawValue: raw).map(HookReply.decision)
-        case (nil, let raw?, nil): return PlanChoice(rawValue: raw).map(HookReply.plan)
-        case (nil, nil, let answers?): return .answers(answers)
+        switch (reply.decision, reply.plan, reply.answers, reply.message) {
+        case (let raw?, nil, nil, nil): return Decision(rawValue: raw).map(HookReply.decision)
+        case (nil, let raw?, nil, nil): return PlanChoice(rawValue: raw).map(HookReply.plan)
+        case (nil, nil, let answers?, nil): return .answers(answers)
+        case (nil, nil, nil, let text?): return .message(text)
         default: return nil
         }
     }

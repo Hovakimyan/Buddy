@@ -48,10 +48,16 @@ struct ApprovalView: View {
             let shown = ApprovalPresentation(
                 approval: approval, decision: model.decision(for: requestId), shownAt: shownAt ?? model.now, now: model.now)
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(shown.tool).font(.title3.monospaced().weight(.semibold))
+                HStack(spacing: 12) {
+                    BuddyFace(state: .approval, size: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(shown.tool).font(.title3.monospaced().weight(.semibold))
+                        if let project = model.project(of: approval.sessionId) {
+                            Text(project).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
                     Spacer()
-                    Text(shown.countdown).font(.subheadline).foregroundStyle(shown.isExpired ? .red : .secondary)
+                    Text(shown.countdown).font(.subheadline.monospacedDigit()).foregroundStyle(shown.isExpired ? .red : .secondary)
                 }
                 ScrollView {
                     Text(shown.summary)

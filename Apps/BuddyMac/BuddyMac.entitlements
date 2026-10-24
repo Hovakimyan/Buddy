@@ -5,5 +5,9 @@
 	<!-- Deliberately NOT sandboxed: the app writes ~/.claude/settings.json and a socket under
 	     ~/Library/Application Support/Buddy (internal use only). iCloud/CloudKit keys are NOT here on
 	     purpose: they make the ad-hoc local build unlaunchable. They live in BuddyMac.cloud.entitlements (opt-in). -->
+	<!-- Typing a message from the iPhone into the iTerm2 or Terminal tab of its Claude Code session (Apple Events;
+	     needed under the hardened runtime of the notarized build). macOS asks the person once per app. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>

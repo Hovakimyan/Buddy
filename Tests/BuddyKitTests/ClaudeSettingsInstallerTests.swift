@@ -39,6 +39,34 @@ import Testing
         try groups(data, .preToolUse).first { $0["matcher"] as? String == "AskUserQuestion" }
     }
 
+    /// PreToolUse carries the question hook and Stop the message hook, each next to the plain one.
+    static func hasSecondHook(_ event: HookEventName) -> Bool { event == .preToolUse || event == .stop }
+
+    @Test func stopGetsTheMessageHookThatOutlivesTenMinutesOfWaiting() throws {
+        let plan = try ClaudeSettingsInstaller.planInstall(existing: nil, hookCommand: command)
+        let stops = try buddyHooks(plan.newData, .stop)
+        #expect(stops.map { $0["command"] as? String } == [command, command + " --stop"])
+        #expect(stops.map { $0["timeout"] as? Int } == [5, 620])
+        #expect(Double(620) > HookClient.stopWaitTimeout && HookClient.stopWaitTimeout > BuddyEngine.stopHoldTimeout)
+        #expect(ClaudeSettingsInstaller.status(existing: plan.newData) == .current)
+
+        // An install from before messages existed is outdated, and installing again adds just the message hook.
+        var root = try object(plan.newData)
+        var hooks = try #require(root["hooks"] as? [String: Any])
+        hooks["Stop"] = (hooks["Stop"] as? [Any])?.filter { group in
+            !(((group as? [String: Any])?["hooks"] as? [[String: Any]])?.contains { ($0["command"] as? String)?.hasSuffix(" --stop") == true } ?? false)
+        }
+        root["hooks"] = hooks
+        let old = try JSONSerialization.data(withJSONObject: root)
+        #expect(ClaudeSettingsInstaller.status(existing: old) == .outdated)
+        let again = try ClaudeSettingsInstaller.planInstall(existing: old, hookCommand: command)
+        #expect(try buddyHooks(again.newData, .stop).count == 2)
+
+        // Uninstalling removes both: nothing of Buddy's (here: nothing at all) is left.
+        let removed = try ClaudeSettingsInstaller.planUninstall(existing: plan.newData)
+        #expect(try object(removed.newData)["hooks"] == nil)
+    }
+
     /// A fresh install with Buddy's AskUserQuestion group removed, as an earlier Buddy version wrote it.
     private func oldInstall() throws -> Data {
         let fresh = try ClaudeSettingsInstaller.planInstall(existing: nil, hookCommand: command)
@@ -61,7 +89,7 @@ import Testing
             #expect(plan.changed)
             for event in ClaudeSettingsInstaller.events {
                 // PreToolUse carries the `*` hook and the AskUserQuestion hook.
-                #expect(try buddyHooks(plan.newData, event).count == (event == .preToolUse ? 2 : 1), "\(event)")
+                #expect(try buddyHooks(plan.newData, event).count == (Self.hasSecondHook(event) ? 2 : 1), "\(event)")
             }
         }
     }
@@ -103,7 +131,7 @@ import Testing
         #expect(second.changed)
         for event in ClaudeSettingsInstaller.events {
             let buddy = try buddyHooks(second.newData, event)
-            let expectedCount = event == .preToolUse ? 2 : 1
+            let expectedCount = Self.hasSecondHook(event) ? 2 : 1
             #expect(buddy.count == expectedCount)
             #expect(buddy.first?["command"] as? String == command)
             #expect(try groups(second.newData, event).count == expectedCount)
@@ -136,10 +164,10 @@ import Testing
         for (event, foreignCommand) in [(HookEventName.permissionRequest, "/usr/local/bin/other-tool"),
                                         (HookEventName.stop, "/opt/notify.sh")] {
             let gs = try groups(plan.newData, event)
-            #expect(gs.count == 2, "\(event)")
+            #expect(gs.count == (Self.hasSecondHook(event) ? 3 : 2), "\(event)")
             let foreign = try #require((gs[0]["hooks"] as? [[String: Any]])?.first)
             #expect(foreign["command"] as? String == foreignCommand)
-            #expect(try buddyHooks(plan.newData, event).count == 1)
+            #expect(try buddyHooks(plan.newData, event).count == (Self.hasSecondHook(event) ? 2 : 1))
             let last = try #require((gs[1]["hooks"] as? [[String: Any]])?.first)
             #expect(isBuddy(last))
         }
@@ -152,7 +180,7 @@ import Testing
                                                            hookCommand: command)
         #expect(plan.changed)
         for event in ClaudeSettingsInstaller.events {
-            #expect(try buddyHooks(plan.newData, event).count == (event == .preToolUse ? 2 : 1), "\(event)")
+            #expect(try buddyHooks(plan.newData, event).count == (Self.hasSecondHook(event) ? 2 : 1), "\(event)")
         }
         #expect((try object(plan.newData)["env"] as? [String: String]) == ["A": "1"])
     }
@@ -160,7 +188,7 @@ import Testing
     @Test func emptyObjectFileIsFilled() throws {
         let plan = try ClaudeSettingsInstaller.planInstall(existing: json("{}"), hookCommand: command)
         #expect(plan.changed)
-        #expect(try buddyHooks(plan.newData, .stop).count == 1)
+        #expect(try buddyHooks(plan.newData, .stop).count == 2)
     }
 
     @Test func malformedJSONThrows() {

@@ -141,8 +141,8 @@ Fixed subscription IDs, saved idempotently:
   It makes the Mac fetch the zone changes (Decisions and Answers come from the same feed).
 
 Pushes are an accelerator, not a requirement on the Mac: while at least one approval or question is pending and
-unexpired the Mac also polls the zone every 4 seconds, so decisions and answers arrive even if pushes do not. The phone refreshes the zone
-while its screen is open. If a subscription cannot be saved (push not configured, a missing index) the failure
+unexpired the Mac also polls the zone every 2 seconds, so decisions and answers arrive even if pushes do not. The phone refreshes the zone
+every 3 seconds while its screen is open. If a subscription cannot be saved (push not configured, a missing index) the failure
 is logged and records keep flowing; it is retried on a later publish or poll, at most once a minute, until it
 succeeds once. Each device's subscriptions are saved independently, so one that cannot be saved yet does not hold
 back the other. Known limitation: the approval subscription has no filter on `status` (a filter would need a

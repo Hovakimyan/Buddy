@@ -53,6 +53,9 @@ public enum ClaudeSettingsInstaller {
     private static let askTimeout = 620
     private static let askMatcher = "AskUserQuestion"
     private static let askFlag = " --ask"
+    /// The stop hook's relay waits up to 610 s for a message from the phone, so its hook must outlive that.
+    private static let stopTimeout = 620
+    private static let stopFlag = " --stop"
 
     // MARK: - Planning
 
@@ -66,6 +69,9 @@ public enum ClaudeSettingsInstaller {
             var installed = install(into: current, event: event, hookCommand: hookCommand)
             if event == .preToolUse {
                 installed = installAsk(into: installed, hookCommand: hookCommand)
+            }
+            if event == .stop {
+                installed = installStop(into: installed, hookCommand: hookCommand)
             }
             hooks[event.rawValue] = installed
         }
@@ -87,7 +93,7 @@ public enum ClaudeSettingsInstaller {
             }
         }
         // Reinstall with Buddy's own recorded command, so only structure, timeouts and missing groups differ.
-        guard let command = commands.first(where: { !isAskCommand($0) }) ?? commands.first.map(askBase) else {
+        guard let command = commands.first(where: { !isAskCommand($0) && !isStopCommand($0) }) ?? commands.first.map(flagBase) else {
             return .notInstalled
         }
         guard let plan = try? planInstall(existing: existing, hookCommand: command) else { return .notInstalled }
@@ -224,12 +230,17 @@ public enum ClaudeSettingsInstaller {
     }
 
     private static func isAskCommand(_ command: String) -> Bool {
-        command.hasSuffix(askFlag) && isBuddyCommand(askBase(command))
+        command.hasSuffix(askFlag) && isBuddyCommand(flagBase(command))
     }
 
-    /// `command` without its trailing ` --ask`.
-    private static func askBase(_ command: String) -> String {
-        command.hasSuffix(askFlag) ? String(command.dropLast(askFlag.count)) : command
+    private static func isStopCommand(_ command: String) -> Bool {
+        command.hasSuffix(stopFlag) && isBuddyCommand(flagBase(command))
+    }
+
+    /// `command` without its trailing ` --ask` or ` --stop`.
+    private static func flagBase(_ command: String) -> String {
+        for flag in [askFlag, stopFlag] where command.hasSuffix(flag) { return String(command.dropLast(flag.count)) }
+        return command
     }
 
     /// Buddy's question hook: a Buddy command ending in ` --ask`.
@@ -238,9 +249,15 @@ public enum ClaudeSettingsInstaller {
         return isAskCommand(command)
     }
 
-    /// Buddy's ordinary hook: any Buddy command that is not the question hook.
+    /// Buddy's message hook: a Buddy command ending in ` --stop`.
+    private static func isBuddyStopHook(_ hook: Any) -> Bool {
+        guard let dict = hook as? [String: Any], let command = dict["command"] as? String else { return false }
+        return isStopCommand(command)
+    }
+
+    /// Buddy's ordinary hook: any Buddy command that is neither the question hook nor the message hook.
     private static func isPlainBuddyHook(_ hook: Any) -> Bool {
-        isBuddyHook(hook) && !isBuddyAskHook(hook)
+        isBuddyHook(hook) && !isBuddyAskHook(hook) && !isBuddyStopHook(hook)
     }
 
     private static func install(into groups: [Any], event: HookEventName, hookCommand: String) -> [Any] {
@@ -248,6 +265,12 @@ public enum ClaudeSettingsInstaller {
         let entry: [String: Any] = ["type": "command", "command": hookCommand, "timeout": timeout]
         let matcher: String? = matcherEvents.contains(event) ? "*" : nil
         return merge(entry, matcher: matcher, into: groups, isMine: isPlainBuddyHook)
+    }
+
+    /// Adds (or updates in place) Buddy's message hook: a second `Stop` group, next to the plain one.
+    private static func installStop(into groups: [Any], hookCommand: String) -> [Any] {
+        let entry: [String: Any] = ["type": "command", "command": hookCommand + stopFlag, "timeout": stopTimeout]
+        return merge(entry, matcher: nil, into: groups, isMine: isBuddyStopHook)
     }
 
     /// Adds (or updates in place) Buddy's `AskUserQuestion` group next to the `*` group.

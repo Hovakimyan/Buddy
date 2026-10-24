@@ -5,13 +5,14 @@ import Foundation
 /// Names and keys of Buddy's CloudKit schema (spec section 4.5) and the pure mappings between the
 /// transport records and `CKRecord`. Foundation and CloudKit only, so the iPhone app can share it.
 ///
-/// Sensitive fields (`project`, `lastTool`, `tool`, `summary`, `questions`, `responses`) are written ONLY through
+/// Sensitive fields (`project`, `lastTool`, `lastPrompt`, `lastReply`, `tool`, `summary`, `questions`, `responses`, `text`)
+/// are written ONLY through
 /// `CKRecord.encryptedValues`; the other keys are plain so they can be queried and displayed.
 /// Record names are deterministic (`sessionId` for Session, the request UUID for Approval and
 /// Decision, Question and Answer), so republishing a record is an upsert and a Decision or Answer is unique
 /// per request. A record name is unique per zone across ALL record types, so the Decision for a request
 /// cannot reuse the request's own name (its Approval has it): it is `decision-<uuid>`. Likewise an Answer
-/// is `answer-<uuid>`, because its Question has the bare request id.
+/// is `answer-<uuid>`, because its Question has the bare request id. A Message is `message-<uuid>` of its own id.
 enum CloudKitSchema {
     static let containerIdentifier = "iCloud.com.sergeyhovakimyan.buddy"
     static let zoneName = "Buddy"
@@ -22,12 +23,16 @@ enum CloudKitSchema {
     static let decisionSubscriptionID = "buddy.decision.created"
     static let questionSubscriptionID = "buddy.question.created"
     static let answerSubscriptionID = "buddy.answer.created"
+    static let messageSubscriptionID = "buddy.message.created"
 
     /// Notification category of the phone's actionable approval notification.
     static let approvalCategory = "BUDDY_APPROVAL"
     /// The push text. Generic on purpose: the command and project never appear in a push payload;
     /// the phone app fetches the encrypted record itself.
     static let approvalAlertBody = "Claude Code needs approval"
+    /// The approval category when the command is short and plain enough to allow from the long-press without
+    /// opening the app (set by the notification service).
+    static let approvalNowCategory = "BUDDY_APPROVAL_NOW"
     /// Notification category of the phone's question notification.
     static let questionCategory = "BUDDY_QUESTION"
     /// The push text for a question. Generic like the approval one: the questions and options never appear
@@ -40,6 +45,7 @@ enum CloudKitSchema {
         static let decision = "Decision"
         static let question = "Question"
         static let answer = "Answer"
+        static let message = "Message"
     }
 
     enum Key {
@@ -48,6 +54,10 @@ enum CloudKitSchema {
         static let updatedAt = "updatedAt"
         /// Int64, Session only: how many subagents run (not sensitive, so plain). Absent on older Macs' records.
         static let agentCount = "agentCount"
+        /// Int64 0 or 1, Session only: Claude waits for a message from the phone (plain). Absent on older Macs' records.
+        static let awaitingMessage = "awaitingMessage"
+        static let messageId = "messageId"
+        static let sentAt = "sentAt"
         static let requestId = "requestId"
         static let status = "status"
         static let createdAt = "createdAt"
@@ -66,10 +76,16 @@ enum CloudKitSchema {
         static let questions = "questions"
         /// JSON of `[[String]]`.
         static let responses = "responses"
+        /// A message's text.
+        static let text = "text"
+        /// Session: the latest prompt and Claude's reply ("" when there is none, so an old value is cleared).
+        static let lastPrompt = "lastPrompt"
+        static let lastReply = "lastReply"
     }
 
     static func decisionRecordName(for requestId: UUID) -> String { "decision-\(requestId.uuidString)" }
     static func answerRecordName(for requestId: UUID) -> String { "answer-\(requestId.uuidString)" }
+    static func messageRecordName(for messageId: UUID) -> String { "message-\(messageId.uuidString)" }
 
     /// The JSON bytes of an encrypted structured field. Strings, bools and arrays of them always encode,
     /// so the empty fallback (which no reader accepts) is unreachable in practice.
@@ -92,6 +108,8 @@ enum CloudKitSchema {
         info.alertBody = approvalAlertBody
         info.soundName = "default"
         info.category = approvalCategory
+        // Lets the phone's notification service fill in the real text and Buddy's picture before iOS shows it.
+        info.shouldSendMutableContent = true
         subscription.notificationInfo = info
         return subscription
     }
@@ -118,6 +136,7 @@ enum CloudKitSchema {
         info.alertBody = questionAlertBody
         info.soundName = "default"
         info.category = questionCategory
+        info.shouldSendMutableContent = true
         subscription.notificationInfo = info
         return subscription
     }
@@ -127,6 +146,18 @@ enum CloudKitSchema {
         let subscription = CKQuerySubscription(
             recordType: RecordType.answer, predicate: NSPredicate(value: true),
             subscriptionID: answerSubscriptionID, options: .firesOnRecordCreation)
+        subscription.zoneID = zoneID
+        let info = CKSubscription.NotificationInfo()
+        info.shouldSendContentAvailable = true
+        subscription.notificationInfo = info
+        return subscription
+    }
+
+    /// Silent push for a new `Message` (wakes the Mac, which then fetches).
+    static func messageSubscription() -> CKQuerySubscription {
+        let subscription = CKQuerySubscription(
+            recordType: RecordType.message, predicate: NSPredicate(value: true),
+            subscriptionID: messageSubscriptionID, options: .firesOnRecordCreation)
         subscription.zoneID = zoneID
         let info = CKSubscription.NotificationInfo()
         info.shouldSendContentAvailable = true
@@ -150,12 +181,16 @@ extension CKRecord {
         self[K.updatedAt] = session.updatedAt
         // Always written, 0 included, so a count that drops to none clears the old one.
         self[K.agentCount] = Int64(session.agentCount)
+        self[K.awaitingMessage] = Int64(session.awaitingMessage ? 1 : 0)
         encryptedValues[K.project] = session.project
         // Saved with `.allKeys`, which overwrites the keys present here but does NOT clear keys absent from
         // this record: once a server-side `lastTool` exists, a later nil `lastTool` leaves the old value.
         // Currently harmless (a session's lastTool is never cleared by the engine); to clear it, write an
         // explicit empty string instead of omitting the key.
         if let lastTool = session.lastTool { encryptedValues[K.lastTool] = lastTool }
+        // Always written ("" for none): `.allKeys` would otherwise keep an older prompt or reply on the server.
+        encryptedValues[K.lastPrompt] = session.lastPrompt ?? ""
+        encryptedValues[K.lastReply] = session.lastReply ?? ""
     }
 
     convenience init(from approval: ApprovalRecord, zoneID: CKRecordZone.ID = CloudKitSchema.zoneID) {
@@ -206,6 +241,17 @@ extension CKRecord {
         self[K.requestId] = answer.requestId.uuidString
         self[K.answeredAt] = answer.answeredAt
         encryptedValues[K.responses] = CloudKitSchema.json(answer.responses)
+    }
+
+    convenience init(from message: MessageRecord, zoneID: CKRecordZone.ID = CloudKitSchema.zoneID) {
+        typealias K = CloudKitSchema.Key
+        self.init(
+            recordType: CloudKitSchema.RecordType.message,
+            recordID: CKRecord.ID(recordName: CloudKitSchema.messageRecordName(for: message.messageId), zoneID: zoneID))
+        self[K.messageId] = message.messageId.uuidString
+        self[K.sessionId] = message.sessionId
+        self[K.sentAt] = message.sentAt
+        encryptedValues[K.text] = message.text
     }
 }
 
@@ -282,11 +328,27 @@ extension SessionRecord {
         case .value(let value) where value >= 0 && value <= Int64(Int32.max): agentCount = Int(value)
         case .value, .wrongType: return nil
         }
+        var conversation: [String?] = []
+        for key in [K.lastPrompt, K.lastReply] {
+            switch record.encrypted(key, as: String.self) {
+            case .absent: conversation.append(nil)
+            case .value(let value): conversation.append(value.isEmpty ? nil : value)
+            case .wrongType: return nil
+            }
+        }
+        let awaitingMessage: Bool
+        switch record.plain(K.awaitingMessage, as: Int64.self) {
+        case .absent: awaitingMessage = false
+        case .value(let value) where value == 0 || value == 1: awaitingMessage = value == 1
+        case .value, .wrongType: return nil
+        }
         // A plain `project` key means the writer did not use encrypted values.
-        if record[K.project] != nil || record[K.lastTool] != nil { return nil }
+        if record[K.project] != nil || record[K.lastTool] != nil || record[K.lastPrompt] != nil || record[K.lastReply] != nil {
+            return nil
+        }
         self.init(
             sessionId: sessionId, state: state, project: project, lastTool: lastTool, updatedAt: updatedAt,
-            agentCount: agentCount)
+            agentCount: agentCount, awaitingMessage: awaitingMessage, lastPrompt: conversation[0], lastReply: conversation[1])
     }
 }
 
@@ -354,5 +416,23 @@ extension AnswerRecord {
             record[K.responses] == nil
         else { return nil }
         self.init(requestId: requestId, responses: responses, answeredAt: answeredAt)
+    }
+}
+
+extension MessageRecord {
+    /// Untrusted input like `AnswerRecord`: the shape is checked here, whether the Mac takes it is
+    /// `BuddyEngine.receive(message:)`'s job.
+    init?(from record: CKRecord) {
+        typealias K = CloudKitSchema.Key
+        guard record.recordType == CloudKitSchema.RecordType.message,
+            let idText = record.requiredPlain(K.messageId, as: String.self),
+            let messageId = UUID(uuidString: idText),
+            record.recordID.recordName == CloudKitSchema.messageRecordName(for: messageId),
+            let sessionId = record.requiredPlain(K.sessionId, as: String.self),
+            let sentAt = record.requiredPlain(K.sentAt, as: Date.self),
+            let text = record.requiredEncrypted(K.text, as: String.self),
+            record[K.text] == nil
+        else { return nil }
+        self.init(messageId: messageId, sessionId: sessionId, text: text, sentAt: sentAt)
     }
 }

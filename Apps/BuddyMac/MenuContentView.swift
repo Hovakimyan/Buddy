@@ -93,6 +93,19 @@ struct MenuContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Toggle(isOn: Binding(get: { model.keepAwakeEnabled }, set: { model.keepAwakeEnabled = $0 })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Keep Mac awake while Claude works")
+                    Text(model.isKeepingAwake
+                        ? "Awake now. It can sleep 10 minutes after Claude goes quiet."
+                        : "Nothing running: your Mac sleeps as usual.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
 
             Divider()
 
@@ -155,7 +168,12 @@ struct SessionRow: View {
                 .accessibilityLabel(session.state.label)
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.project).lineLimit(1)
-                if let tool = session.lastTool {
+                if session.awaitingMessage {
+                    Text("Waiting for your message from iPhone").font(.caption).foregroundStyle(.orange).lineLimit(1)
+                } else if session.queuedMessages > 0 {
+                    Text(session.queuedMessages == 1 ? "1 message from iPhone queued" : "\(session.queuedMessages) messages from iPhone queued")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if let tool = session.lastTool {
                     Text(tool).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }

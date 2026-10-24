@@ -241,7 +241,7 @@ with `--upload-with xcodebuild`.
 ## test-phone.sh
 
 `scripts/test-phone.sh` (under a minute) tests `phone-signed-build.sh`, `testflight.sh`, `scripts/lib/common.sh` and the
-placeholder icons with **fake** `xcodegen`, `xcodebuild`, `xcrun` (devicectl, altool) and a `codesign` shim on `PATH`. Nothing
+app icons with **fake** `xcodegen`, `xcodebuild`, `xcrun` (devicectl, altool) and a `codesign` shim on `PATH`. Nothing
 contacts Apple, no device and no account are needed, the Team ID and key values are made up, `HOME` points to a temp folder, and
 everything is written to a temp folder. The fake build and archive make an ad-hoc signed stand-in app whose `Info.plist` is a copy
 of the one a real `iphoneos` build of BuddyPhone produced (`scripts/testdata/BuddyPhone.Info.plist`; never invent that layout
@@ -272,20 +272,23 @@ contain it are ignored, and the script says so; once the folder is renamed nothi
 patterns and skips its own file. `test-release.sh` runs it on the tree and on the app it builds (the app check takes
 about half a minute). Read-only.
 
-## make-icons.swift: placeholder app icons
+## App icons
 
-`swift scripts/make-icons.swift` draws the placeholder icons of both apps (a flat blue rounded square with a white
-capital "B", from scratch with CoreGraphics and CoreText; no third-party art; it is Buddy's own) and writes them into the asset
-catalogs `Apps/BuddyPhone/Assets.xcassets` (one 1024 px universal icon, no alpha channel, as App Store Connect requires for
-TestFlight) and `Apps/BuddyMac/Assets.xcassets` (the usual 16 to 1024 px macOS sizes). The generated PNGs and `Contents.json` files are
-committed, so nobody needs to run it again. `Apps/project.yml` wires them with `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon`.
+Both app icons are Block, the character, drawn by the same code as the island (`Apps/Shared/Characters/Block/`): idle,
+on a night background with a soft glow. `Apps/BuddyMacTests/AppIconArtTests.swift` writes them into the asset catalogs
+`Apps/BuddyPhone/Assets.xcassets` (one 1024 px universal icon, no alpha channel, as App Store Connect requires for
+TestFlight) and `Apps/BuddyMac/Assets.xcassets` (the usual 16 to 1024 px macOS sizes, a rounded square with transparent
+margins). The PNGs and `Contents.json` files are committed, so nobody needs to run it again. `Apps/project.yml` wires them
+with `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon`.
 
-### Replacing the app icon
+### Changing the app icon
 
-It is a placeholder, easy to replace:
+Change the colours or the character's state at the top of `AppIconArtTests.swift`, then run it (it does nothing unless
+asked):
 
-- iPhone: overwrite `Apps/BuddyPhone/Assets.xcassets/AppIcon.appiconset/icon-1024.png` with a 1024 x 1024 PNG, full bleed
-  (no rounded corners) and **no transparency** (App Store Connect rejects an alpha channel).
-- Mac: overwrite the `icon-*.png` files in `Apps/BuddyMac/Assets.xcassets/AppIcon.appiconset/` (16, 32, 64, 128, 256, 512 and 1024 px;
-  rounded square with transparent margins), or open the catalog in Xcode and drag the new images in.
-- Or change the colour, the letter or the size grid at the top of `scripts/make-icons.swift` and run it again.
+```sh
+cd Apps && TEST_RUNNER_BUDDY_WRITE_ICONS=1 xcodebuild -project Buddy.xcodeproj -scheme BuddyMac \
+  -destination 'platform=macOS' test -only-testing:BuddyMacTests/AppIconArtTests
+```
+
+Or overwrite the PNGs by hand: the iPhone one full bleed (no rounded corners) and with **no transparency**.

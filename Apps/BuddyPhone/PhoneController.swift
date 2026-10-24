@@ -7,6 +7,8 @@ import OSLog
 enum PhoneScreen: Hashable, Sendable {
     case approval(UUID)
     case question(UUID)
+    /// One session, with the box to send Claude a message.
+    case session(String)
 }
 
 /// The app-level state: decides once at launch whether iCloud is usable, owns the `PhoneModel` that results, and
@@ -15,7 +17,11 @@ enum PhoneScreen: Hashable, Sendable {
 @MainActor
 @Observable
 final class PhoneController {
+    #if DEBUG
+    static let shared = PhoneController(selector: DemoCloud.isRequested ? DemoCloud.selector : .live)
+    #else
     static let shared = PhoneController()
+    #endif
 
     private(set) var status: PhoneCloudStatus = .checking
     /// Nil until the check finished, and when iCloud is not available (then the app shows `status`).
@@ -100,14 +106,20 @@ final class PhoneController {
         case .question(let id):
             path = [.question(id)]  // likewise: the screen waits for the question to load
             await start()
-        case .deny(let id):
+        case .deny, .allowNow, .answer:
             await start()
             guard let model else { return }
             do {
-                try await model.denyFromNotification(id, timeout: denyTimeout)
+                switch route {
+                case .deny(let id): try await model.denyFromNotification(id, timeout: denyTimeout)
+                case .allowNow(let id, let shown):
+                    try await model.allowFromNotification(id, shownSummary: shown, timeout: denyTimeout)
+                case .answer(let id, let option): try await model.answerFromNotification(id, option: option, timeout: denyTimeout)
+                case .review, .question: break
+                }
             } catch {
                 // Nothing was sent, so nothing was decided: the request falls back to the Mac card / terminal.
-                log.error("deny from notification failed: \(error.localizedDescription, privacy: .public)")
+                log.error("notification action failed: \(error.localizedDescription, privacy: .public)")
                 if Self.leavesTheRequestOpen(error) {
                     await notifier.post(
                         title: ApprovalNotification.denyFailedTitle, body: ApprovalNotification.denyFailedBody)

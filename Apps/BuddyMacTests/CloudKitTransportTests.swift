@@ -69,7 +69,7 @@ private final class WeakBox: @unchecked Sendable {
 
         #expect(db.zoneExists)
         #expect(db.calls(.saveZone) == 1)  // setup is shared, not repeated per publish
-        #expect(db.calls(.saveSubscription) == 2)  // the Mac's two (decision, answer), once
+        #expect(db.calls(.saveSubscription) == 3)  // the Mac's three (decision, answer, message), once
         #expect(db.recordNames(ofType: "Session") == ["s1"])  // upsert, not a second record
         #expect(db.lastSavePolicy == .allKeys)
         let stored = try #require(db.record(named: "s1"))
@@ -176,11 +176,12 @@ private final class WeakBox: @unchecked Sendable {
 
     // MARK: Subscriptions
 
-    @Test func macRegistersTheSilentDecisionAndAnswerSubscriptionsOnly() async throws {
+    @Test func macRegistersTheSilentDecisionAnswerAndMessageSubscriptionsOnly() async throws {
         let db = FakeCloudDatabase()
         try await mac(db).publish(session: sessionRecord())
-        #expect(Set(db.subscriptions.keys) == [CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID])
-        for id in [CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID] {
+        let ids = [CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID, CloudKitSchema.messageSubscriptionID]
+        #expect(Set(db.subscriptions.keys) == Set(ids))
+        for id in ids {
             #expect(db.subscriptions[id]?.notificationInfo?.shouldSendContentAvailable == true)
         }
     }
@@ -195,6 +196,9 @@ private final class WeakBox: @unchecked Sendable {
         let questionInfo = db.subscriptions[CloudKitSchema.questionSubscriptionID]?.notificationInfo
         #expect(questionInfo?.category == "BUDDY_QUESTION")
         #expect(questionInfo?.alertBody == "Claude is asking")
+        // Without it iOS never runs the notification service, and the text stays generic.
+        #expect(approvalInfo?.shouldSendMutableContent == true)
+        #expect(questionInfo?.shouldSendMutableContent == true)
     }
 
     @Test func failedSubscriptionNeverStopsRecordsAndIsRetriedLaterNotInATightLoop() async throws {
@@ -202,31 +206,33 @@ private final class WeakBox: @unchecked Sendable {
         let now = Mutex(t0)
         let transport = mac(db) { now.withLock { $0 } }
         // The first attempts fail, whatever the reason (e.g. record type not created yet in Development).
-        // The Mac saves two subscriptions per attempt (decision, answer), each independently of the other.
-        db.fail(.saveSubscription, with: CKError(.permissionFailure), times: 3)
+        // The Mac saves three subscriptions per attempt (decision, answer, message), each independently of the others.
+        db.fail(.saveSubscription, with: CKError(.permissionFailure), times: 4)
 
         try await transport.publish(session: sessionRecord("a"))
         #expect(db.recordNames(ofType: "Session") == ["a"])  // records flow regardless
         #expect(db.subscriptions.isEmpty)
-        #expect(db.calls(.saveSubscription) == 2)
+        #expect(db.calls(.saveSubscription) == 3)
 
         try await transport.publish(session: sessionRecord("b"))  // too soon: not retried
         try await transport.publish(session: sessionRecord("c"))
-        #expect(db.calls(.saveSubscription) == 2)
+        #expect(db.calls(.saveSubscription) == 3)
 
         now.withLock { $0 = t0.addingTimeInterval(CloudKitTransport.subscriptionRetryInterval + 1) }
-        try await transport.publish(session: sessionRecord("d"))  // decision fails again, answer saves
-        #expect(db.calls(.saveSubscription) == 4)
-        #expect(Set(db.subscriptions.keys) == [CloudKitSchema.answerSubscriptionID])
+        try await transport.publish(session: sessionRecord("d"))  // decision fails again, the others save
+        #expect(db.calls(.saveSubscription) == 6)
+        #expect(Set(db.subscriptions.keys) == [CloudKitSchema.answerSubscriptionID, CloudKitSchema.messageSubscriptionID])
 
         now.withLock { $0 = t0.addingTimeInterval(2 * (CloudKitTransport.subscriptionRetryInterval + 1)) }
         try await transport.publish(session: sessionRecord("e"))  // only the missing one is tried, and saves
-        #expect(Set(db.subscriptions.keys) == [CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID])
-        #expect(db.calls(.saveSubscription) == 5)
+        #expect(Set(db.subscriptions.keys) == [
+            CloudKitSchema.decisionSubscriptionID, CloudKitSchema.answerSubscriptionID, CloudKitSchema.messageSubscriptionID,
+        ])
+        #expect(db.calls(.saveSubscription) == 7)
 
         now.withLock { $0 = t0.addingTimeInterval(10_000) }
         try await transport.publish(session: sessionRecord("f"))  // saved once: never again
-        #expect(db.calls(.saveSubscription) == 5)
+        #expect(db.calls(.saveSubscription) == 7)
     }
 
     @Test func transientSubscriptionFailureDoesNotFailThePublish() async throws {
@@ -242,7 +248,7 @@ private final class WeakBox: @unchecked Sendable {
         try await transport.publish(session: sessionRecord())
         db.dropZone()
         try await transport.publish(session: sessionRecord())
-        #expect(db.calls(.saveSubscription) == 4)  // both subscriptions, twice
+        #expect(db.calls(.saveSubscription) == 6)  // all three subscriptions, twice
     }
 
     // MARK: Decisions (Mac)

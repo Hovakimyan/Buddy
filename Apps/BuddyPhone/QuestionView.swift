@@ -90,6 +90,12 @@ struct QuestionView: View {
             let isOpen = record.status == .pending && !expired && !sent
 
             VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    BuddyFace(state: .question, size: 56)
+                    if let project = model.project(of: record.sessionId) {
+                        Text(project).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    }
+                }
                 HStack(alignment: .firstTextBaseline) {
                     if record.questions.count > 1 {
                         Text("\(current + 1)/\(record.questions.count)").font(.subheadline.monospacedDigit())
@@ -100,7 +106,7 @@ struct QuestionView: View {
                         .background(.quaternary, in: Capsule())
                     Spacer()
                     Text(Self.countdown(record, now: model.now))
-                        .font(.subheadline).foregroundStyle(expired ? .red : .secondary)
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(expired ? .red : .secondary)
                 }
                 Text(DisplayText.sanitized(asked.text)).font(.title3.weight(.semibold))
                 if asked.multiSelect { Text("Pick all that apply.").font(.footnote).foregroundStyle(.secondary) }

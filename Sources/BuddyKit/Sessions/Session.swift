@@ -55,6 +55,24 @@ public struct Session: Sendable, Equatable, Identifiable {
     /// The main conversation's turn ended (Stop) while subagents still ran: the session stays `.working` until the
     /// last one stops.
     public var awaitingAgents: Bool
+    /// Claude finished its turn and its `Stop` hook waits for a message from the phone. Set by the engine, not by
+    /// `SessionStore`.
+    public var awaitingMessage: Bool
+    /// Messages from the phone waiting for this session's turn to end. Set by the engine.
+    public var queuedMessages: Int
+    /// The main conversation's latest prompt (typed in the terminal, or a message from the phone), at most
+    /// `Session.promptLimit` characters; nil before the first one.
+    public var lastPrompt: String?
+    /// Claude's reply that ended the latest turn, its last `Session.replyLimit` characters; nil while none has.
+    public var lastReply: String?
+
+    /// Where the session runs (from its hook relay), so a message from the phone can be typed there.
+    public var terminal: TerminalInfo?
+
+    /// How much of a prompt is kept (its start).
+    public static let promptLimit = 1000
+    /// How much of a reply is kept (its end, where a recap usually is).
+    public static let replyLimit = 4000
 
     public init(
         id: String,
@@ -67,7 +85,11 @@ public struct Session: Sendable, Equatable, Identifiable {
         toolCount: Int = 0,
         starts: Int = 0,
         agents: [Subagent] = [],
-        awaitingAgents: Bool = false
+        awaitingAgents: Bool = false,
+        awaitingMessage: Bool = false,
+        queuedMessages: Int = 0,
+        lastPrompt: String? = nil,
+        lastReply: String? = nil
     ) {
         self.id = id
         self.project = project
@@ -80,5 +102,21 @@ public struct Session: Sendable, Equatable, Identifiable {
         self.starts = starts
         self.agents = agents
         self.awaitingAgents = awaitingAgents
+        self.awaitingMessage = awaitingMessage
+        self.queuedMessages = queuedMessages
+        self.lastPrompt = lastPrompt
+        self.lastReply = lastReply
+    }
+
+    /// `text` cut to `promptLimit` characters from its start, marked with "…" when cut.
+    public static func keptPrompt(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count <= promptLimit ? trimmed : String(trimmed.prefix(promptLimit - 1)) + "…"
+    }
+
+    /// `text` cut to its last `replyLimit` characters, marked with "…" when cut.
+    public static func keptReply(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count <= replyLimit ? trimmed : "…" + String(trimmed.suffix(replyLimit - 1))
     }
 }

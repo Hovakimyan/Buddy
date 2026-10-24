@@ -12,6 +12,10 @@ enum NotificationRoute: Equatable, Sendable {
     case review(UUID)
     /// Open the app on this question.
     case question(UUID)
+    /// Allow from the long-press (the iPhone was unlocked to tap it), for the command the notification showed.
+    case allowNow(UUID, shown: String?)
+    /// Answer from the long-press: the option at this index of the (single) question.
+    case answer(UUID, option: Int)
 
     /// The route of a tapped notification, whichever of the two kinds it is (their subscriptions differ, so at
     /// most one of them matches).
@@ -28,6 +32,8 @@ enum ApprovalNotification {
     static let categoryID = CloudKitSchema.approvalCategory
     static let allowActionID = "BUDDY_ALLOW"
     static let denyActionID = "BUDDY_DENY"
+    static let allowNowActionID = "BUDDY_ALLOW_NOW"
+    static let nowCategoryID = CloudKitSchema.approvalNowCategory
 
     /// The category registered at launch with `UNUserNotificationCenter.setNotificationCategories`.
     /// Deny has neither `.foreground` nor `.authenticationRequired`: it runs in the background, also from the lock
@@ -38,6 +44,14 @@ enum ApprovalNotification {
             identifier: allowActionID, title: "Allow", options: [.foreground, .authenticationRequired])
         let deny = UNNotificationAction(identifier: denyActionID, title: "Deny", options: [.destructive])
         return UNNotificationCategory(identifier: categoryID, actions: [allow, deny], intentIdentifiers: [], options: [])
+    }
+
+    /// The category the notification service picks for a short, plain command: Allow works without opening the app,
+    /// once the iPhone is unlocked (`.authenticationRequired`), which stands in for the app's own Face ID check.
+    static func nowCategory() -> UNNotificationCategory {
+        let allow = UNNotificationAction(identifier: allowNowActionID, title: "Allow", options: [.authenticationRequired])
+        let deny = UNNotificationAction(identifier: denyActionID, title: "Deny", options: [.destructive])
+        return UNNotificationCategory(identifier: nowCategoryID, actions: [allow, deny], intentIdentifiers: [], options: [])
     }
 
     // MARK: Which request
@@ -63,35 +77,31 @@ enum ApprovalNotification {
     }
 
     fileprivate static func fields(_ userInfo: [AnyHashable: Any]) -> (recordName: String?, subscriptionID: String?) {
-        if let ck = userInfo["ck"] as? [AnyHashable: Any], let query = ck["qry"] as? [AnyHashable: Any] {
-            let recordName = query["rid"] as? String
-            let subscriptionID = query["sid"] as? String
-            if recordName != nil || subscriptionID != nil { return (recordName, subscriptionID) }
-        }
-        if let query = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification {
-            return (query.recordID?.recordName, query.subscriptionID)
-        }
-        return (nil, nil)
+        CloudKitPush.fields(userInfo)
     }
 
     // MARK: Routing
 
-    static func route(actionIdentifier: String, requestId: UUID?) -> NotificationRoute? {
+    static func route(actionIdentifier: String, requestId: UUID?, shown: String? = nil) -> NotificationRoute? {
         guard let requestId else { return nil }
         switch actionIdentifier {
         case denyActionID: return .deny(requestId)
+        case allowNowActionID: return .allowNow(requestId, shown: shown)
         case allowActionID, UNNotificationDefaultActionIdentifier: return .review(requestId)
         default: return nil  // dismissed, or an action we do not know
         }
     }
 
     static func route(actionIdentifier: String, userInfo: [AnyHashable: Any]) -> NotificationRoute? {
-        route(actionIdentifier: actionIdentifier, requestId: requestId(userInfo: userInfo))
+        route(
+            actionIdentifier: actionIdentifier, requestId: requestId(userInfo: userInfo),
+            shown: NotificationDetail(userInfo: userInfo)?.summary)
     }
 }
 
-/// The `BUDDY_QUESTION` notification ("Claude is asking"). It has no actions: a question is answered in the app,
-/// behind Face ID, so tapping the notification only opens the app on the question. The push carries no question
+/// The `BUDDY_QUESTION` notification ("Claude is asking"). It has no fixed actions: the long-press view adds one per
+/// option for a single question with one choice (answered once the iPhone is unlocked); otherwise tapping the
+/// notification opens the app on the question, behind Face ID. The push carries no question
 /// text; the question is identified by the record name of the Question the subscription fired for.
 enum QuestionNotification {
     static let categoryID = CloudKitSchema.questionCategory
@@ -112,12 +122,13 @@ enum QuestionNotification {
         ApprovalNotification.fields(userInfo).subscriptionID == CloudKitSchema.questionSubscriptionID
     }
 
-    /// Only a tap on the notification itself opens the question; dismissing or any other action does nothing.
+    /// A tap on the notification opens the question; an option picked on the long-press answers it; dismissing or any
+    /// other action does nothing.
     static func route(actionIdentifier: String, userInfo: [AnyHashable: Any]) -> NotificationRoute? {
-        guard actionIdentifier == UNNotificationDefaultActionIdentifier, let id = requestId(userInfo: userInfo) else {
-            return nil
-        }
-        return .question(id)
+        guard let id = requestId(userInfo: userInfo) else { return nil }
+        if actionIdentifier == UNNotificationDefaultActionIdentifier { return .question(id) }
+        if let option = QuestionAnswerAction.option(of: actionIdentifier) { return .answer(id, option: option) }
+        return nil
     }
 }
 
