@@ -32,7 +32,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: "pawprint")
+            Image("MenuBarIcon")
             if !model.pending.isEmpty {
                 Text("\(model.pending.count)")
             }

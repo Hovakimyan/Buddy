@@ -38,3 +38,4 @@ dist/
 # Marketing site source is deployed as a static Site.
 !website/dist/
 .playwright-cli/
+.playwright-mcp/

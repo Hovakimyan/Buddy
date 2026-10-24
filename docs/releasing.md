@@ -9,8 +9,8 @@ TestFlight export and upload, the real iPhone link and the first-run setup windo
 device (see "What has never been run" at the end). Expect to fix small things on the first real run. Never put your Team ID,
 the API key file, its key id or its issuer id in a file in this repository: they go in environment variables only.
 
-**Audience.** The dmg and the TestFlight build are for preview testers: no public download, no external TestFlight
-testers, no App Store. All of the app's code and artwork is Buddy's own; the bundled sounds are CC0, each listed with its
+**Audience.** Public: anyone can download the notarized dmg from the website (GitHub Releases), and the iPhone app goes
+through TestFlight to the App Store. All of the app's code and artwork is Buddy's own; the bundled sounds are CC0, each listed with its
 source in `Apps/BuddyMac/Resources/sounds/SOURCES.md` (bundled in the app). `scripts/check-names.sh` (run by
 `scripts/test-release.sh` on the tree and on the built app) checks that the names of the project Buddy was cloned from,
 of its character and of its author appear nowhere: not in a tracked file's path or contents, nor in the app's file
@@ -130,14 +130,18 @@ Delete `dist/testflight-build` when done: Xcode's own logs in it contain your Te
 
 ## Where to host the dmg
 
-For preview distribution, use a **private GitHub Release** in the Buddy repository
-or a maintainer-approved shared drive. For a release:
+The dmg is published as a **GitHub Release** of the public repository, and the website's **Download for Mac** button
+(https://buddy.ashoon.dev) links to `https://github.com/Hovakimyan/Buddy/releases/latest/download/Buddy.dmg`. So every
+release carries the dmg twice: under its versioned name, and as `Buddy.dmg` for that link.
 
 ```sh
-gh release create v<version> dist/Buddy-<version>.dmg dist/Buddy-<version>.dmg.sha256 --draft --title "Buddy <version>"
+cp dist/Buddy-<version>.dmg dist/Buddy.dmg
+gh release create v<version> dist/Buddy.dmg dist/Buddy-<version>.dmg dist/Buddy-<version>.dmg.sha256 \
+  --title "Buddy <version>" --notes-file <notes.md>
 ```
 
-Never make the repository or the download link public. Send colleagues the link and `docs/installing.md`.
+Publish it (no `--draft`) only after the checklist above passed: the website links to whatever the latest published
+release is. Check the link afterwards with `curl -sIL <link> | grep -i '^location\|^HTTP'`.
 
 ## Version and build numbers
 

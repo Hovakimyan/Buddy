@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f3eee5">
+<title>Buddy — Privacy</title>
+<meta name="description" content="Buddy collects no data. Your sessions and requests stay on your Mac and in your own private iCloud.">
+<link rel="canonical" href="https://buddy.ashoon.dev/privacy.html">
+<link rel="icon" href="favicon.svg"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root { --paper: #f3eee5; --ink: #231f1a; --muted: #6b6258; --line: #ddd4c6; --accent: #3159e9; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 "Bricolage Grotesque", -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 56px 20px 80px; }
+a { color: var(--accent); }
+.home { font-weight: 800; font-size: 26px; text-decoration: none; color: var(--ink); }
+.home span { color: #c4583a; }
+h1 { font-size: clamp(36px, 7vw, 54px); line-height: 1.05; letter-spacing: -0.02em; margin: 40px 0 8px; }
+h2 { font-size: 21px; margin: 36px 0 6px; }
+p, li { color: var(--ink); }
+.updated { color: var(--muted); font-size: 15px; }
+footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px; color: var(--muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<main>
+<a class="home" href="./">buddy<span>.</span></a>
+<h1>Privacy</h1>
+<p class="updated">Last updated 24 October 2026</p>
+
+<p>Buddy collects no data. There is no account, no analytics, no tracking and no Buddy server. What Buddy shows stays on your Mac, and when you use the iPhone app, in your own private iCloud.</p>
+
+<h2>On your Mac</h2>
+<p>Buddy reads the events Claude Code sends to its local hooks: your session’s folder name, its state, the tool it runs, permission requests and questions, and Claude’s latest prompt and reply. It keeps them in memory to show them to you, and never sends them anywhere except your own iCloud (below). Connecting Buddy changes your Claude Code settings only after you review the change, and keeps a backup.</p>
+
+<h2>With the iPhone app</h2>
+<p>The Mac and the iPhone talk through the private database of your own iCloud account, which only you can read. Command text, project names, questions, answers, messages and the latest prompt and reply are stored there as encrypted fields. Requests and messages are removed after use or within about 20 minutes. Allowing a request or sending a message asks for Face ID or your passcode; that check happens on your iPhone, and Buddy never sees your biometrics.</p>
+
+<h2>Notifications</h2>
+<p>Push notifications are delivered by Apple. The push itself carries no command or question text; your iPhone fetches it from your iCloud and shows it, and iOS hides it on the lock screen until your iPhone is unlocked.</p>
+
+<h2>Typing into your terminal</h2>
+<p>If you allow it, Buddy types the messages you send from your iPhone into the iTerm2 or Terminal tab of the Claude Code session they are for. macOS asks your permission first, and you can withdraw it in System Settings › Privacy &amp; Security › Automation.</p>
+
+<h2>Children</h2>
+<p>Buddy is a developer tool and is not directed at children.</p>
+
+<h2>Changes and contact</h2>
+<p>If this policy changes, this page changes with it. Questions? <a href="support.html">Get in touch</a>.</p>
+
+<footer>© 2026 Buddy · Built by <a href="https://github.com/Hovakimyan">Sergey Hovakimyan</a> · <a href="./">Home</a> · <a href="support.html">Support</a></footer>
+</main>
+</body>
+</html>

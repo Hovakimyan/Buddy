@@ -296,8 +296,8 @@ For a safe manual run, `buddyctl` and the app honour `BUDDY_SOCKET`, `BUDDY_SETT
 ## Artwork and licences
 
 **Artwork.** The Block character is drawn in code (`Apps/Shared/Characters/Block/`), and both app icons are Block
-itself, drawn by that same code (`Apps/BuddyMacTests/AppIconArtTests.swift`). They and the menu-bar icon (the SF Symbol
-`pawprint`) are Buddy's own.
+itself, drawn by that same code (`Apps/BuddyMacTests/AppIconArtTests.swift`). So is the menu-bar icon,
+Buddy's silhouette. All of them are Buddy's own.
 
 **Sounds.** Every bundled sound is a CC0 1.0 (public domain) file; each one's source pack and original file are listed in
 [`Apps/BuddyMac/Resources/sounds/SOURCES.md`](Apps/BuddyMac/Resources/sounds/SOURCES.md).

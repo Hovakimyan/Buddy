@@ -1,0 +1,34 @@
+# Publishes the marketing site (website/dist, plain static files) to GitHub Pages at buddy.ashoon.dev (website/dist/CNAME).
+# Needs, once: repository Settings › Pages › Source: GitHub Actions, and a DNS CNAME record buddy.ashoon.dev ›
+# hovakimyan.github.io at the domain's DNS provider.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ["website/dist/**", ".github/workflows/website.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

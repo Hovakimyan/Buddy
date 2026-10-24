@@ -26,7 +26,7 @@ All 11 states, eight expression selections, question/plan/session choices and re
 
 ## Resemblance and branding
 
-The exact Mochi and Grok references have not been supplied. Several unrelated products use the Mochi name, so no definitive visual or legal conclusion is justified.
+The exact reference characters were not supplied, and several unrelated products share likely names, so no definitive visual or legal conclusion is justified.
 
 One identified reference, https://moch.im/, describes a soft-body companion and depicts a green ovoid with round eyes and a small mouth. Buddy uses a rounded block and app-state color changes. Those are observable differences, not legal clearance. Code drawn locally does not itself establish that a design is independent of someone else's artwork.
 

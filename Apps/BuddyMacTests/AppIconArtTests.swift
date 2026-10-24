@@ -19,6 +19,7 @@ import UniformTypeIdentifiers
 /// - `BuddyMac/.../AppIcon.appiconset/icon-16 ... icon-1024.png`: the macOS rounded square, 824/1024 of the canvas,
 ///   with transparent margins; Block's body fills the square.
 /// - `BuddyNotificationService/Resources/buddy-approval.png` and `buddy-question.png`: the picture on a notification.
+/// - `BuddyMac/Assets.xcassets/MenuBarIcon.imageset`: Buddy's silhouette for the menu bar (a template image).
 @MainActor
 @Suite struct AppIconArtTests {
     /// Block's idle body colour, behind it in case a corner shows.
@@ -63,6 +64,20 @@ import UniformTypeIdentifiers
             let picture = try Self.scaled(try Self.character(state: state), to: 300)
             try Self.writePNG(picture, to: apps.appendingPathComponent("BuddyNotificationService/Resources/\(name).png"))
         }
+
+        // The menu bar: Buddy's silhouette with his eyes cut out, a template image macOS tints itself.
+        let menuSet = apps.appendingPathComponent("BuddyMac/Assets.xcassets/MenuBarIcon.imageset")
+        try FileManager.default.createDirectory(at: menuSet, withIntermediateDirectories: true)
+        for scale in [1, 2, 3] {
+            try Self.writePNG(try Self.menuBarIcon(points: 18, scale: scale), to: menuSet.appendingPathComponent("menubar@\(scale)x.png"))
+        }
+        let contents: [String: Any] = [
+            "images": [1, 2, 3].map { ["filename": "menubar@\($0)x.png", "idiom": "mac", "scale": "\($0)x"] },
+            "info": ["author": "xcode", "version": 1],
+            "properties": ["template-rendering-intent": "template"],
+        ]
+        try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
+            .write(to: menuSet.appendingPathComponent("Contents.json"))
 
         let master = try Self.icon(size: 1024, character: character, macShape: true)
         for pixels in [16, 32, 64, 128, 256, 512, 1024] {
@@ -114,6 +129,27 @@ import UniformTypeIdentifiers
             x: body.midX - (opaque.midX * scale), y: body.midY - ((CGFloat(character.height) - opaque.midY) * scale),
             width: CGFloat(character.width) * scale, height: CGFloat(character.height) * scale)
         ctx.draw(character, in: art)
+        return try #require(ctx.makeImage())
+    }
+
+    /// Buddy for the menu bar at `points` (an 18 pt square), `scale` times: a rounded square body, its two eyes cut out.
+    /// Opaque black on transparent, so macOS draws it in the menu bar's own colour.
+    static func menuBarIcon(points: Int, scale: Int) throws -> CGImage {
+        let pixels = points * scale
+        let s = CGFloat(pixels)
+        let ctx = try #require(CGContext(
+            data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let body = CGRect(x: s * 0.06, y: s * 0.08, width: s * 0.88, height: s * 0.84)
+        ctx.addPath(CGPath(roundedRect: body, cornerWidth: s * 0.26, cornerHeight: s * 0.26, transform: nil))
+        ctx.setFillColor(CGColor(gray: 0, alpha: 1))
+        ctx.fillPath()
+        // The eyes: tall ovals in the body's middle, as on the character.
+        ctx.setBlendMode(.clear)
+        for x in [0.33, 0.67] {
+            let eye = CGRect(x: s * x - s * 0.085, y: s * 0.40, width: s * 0.17, height: s * 0.22)
+            ctx.fillEllipse(in: eye)
+        }
         return try #require(ctx.makeImage())
     }
 

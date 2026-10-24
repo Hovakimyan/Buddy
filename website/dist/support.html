@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f3eee5">
+<title>Buddy — Support</title>
+<meta name="description" content="Help with Buddy, the little companion for Claude Code on your Mac and iPhone.">
+<link rel="canonical" href="https://buddy.ashoon.dev/support.html">
+<link rel="icon" href="favicon.svg"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root { --paper: #f3eee5; --ink: #231f1a; --muted: #6b6258; --line: #ddd4c6; --accent: #3159e9; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 "Bricolage Grotesque", -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 56px 20px 80px; }
+a { color: var(--accent); }
+.home { font-weight: 800; font-size: 26px; text-decoration: none; color: var(--ink); }
+.home span { color: #c4583a; }
+h1 { font-size: clamp(36px, 7vw, 54px); line-height: 1.05; letter-spacing: -0.02em; margin: 40px 0 8px; }
+h2 { font-size: 21px; margin: 36px 0 6px; }
+p, li { color: var(--ink); }
+.updated { color: var(--muted); font-size: 15px; }
+footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px; color: var(--muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<main>
+<a class="home" href="./">buddy<span>.</span></a>
+<h1>Support</h1>
+<p>Something not working, or an idea for Buddy? Open an issue on GitHub, and include your macOS and iOS versions and what you expected to happen.</p>
+<p><a href="https://github.com/Hovakimyan/Buddy/issues">Report a problem or suggest a feature on GitHub ↗</a></p>
+
+<h2>Common questions</h2>
+<p><strong>Buddy shows no sessions.</strong> Open Buddy’s menu and choose Setup: “Connect Buddy to Claude Code” must have its check mark. Sessions that were already running show up with their next event.</p>
+<p><strong>The iPhone says it is not connected.</strong> Sign in to iCloud with the same Apple Account on your Mac and your iPhone. Buddy’s menu on the Mac should say “Phone link on”.</p>
+<p><strong>A message from the iPhone shows as a grey “Stop hook” line.</strong> That session runs in a terminal Buddy cannot type into (for example the VS Code terminal). Claude still gets the message. In iTerm2, Terminal and tmux it appears as your own prompt.</p>
+<p><strong>No notifications.</strong> Check Settings › Notifications › Buddy on your iPhone, and open Buddy once so it can register.</p>
+
+<p>More in the <a href="https://github.com/Hovakimyan/Buddy/blob/main/docs/installing.md">installation guide</a> and <a href="privacy.html">privacy policy</a>.</p>
+
+<footer>© 2026 Buddy · Built by <a href="https://github.com/Hovakimyan">Sergey Hovakimyan</a> · <a href="./">Home</a> · <a href="privacy.html">Privacy</a></footer>
+</main>
+</body>
+</html>
