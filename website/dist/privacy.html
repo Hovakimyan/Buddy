@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f3eee5">
 <title>Buddy — Privacy</title>
-<meta name="description" content="Buddy collects no data. Your sessions and requests stay on your Mac and in your own private iCloud.">
+<meta name="description" content="Buddy’s apps send the developer nothing. Your sessions and requests stay on your Mac and in your own private iCloud. What the website’s hosts see, and your rights.">
 <link rel="canonical" href="https://buddy.ashoon.dev/privacy.html">
 <link rel="icon" href="favicon.svg"><link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
@@ -28,27 +28,127 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px;
 <h1>Privacy</h1>
 <p class="updated">Last updated 24 October 2026</p>
 
-<p>Buddy collects no data. There is no account, no analytics, no tracking and no Buddy server. What Buddy shows stays on your Mac, and when you use the iPhone app, in your own private iCloud.</p>
+<p>This policy covers Buddy for Mac, the Buddy iPhone app (listed on the App Store as “Buddy by Ashoon”) and this website, buddy.ashoon.dev. Buddy is made by Sergey Hovakimyan, an individual developer (“I”, “me”). “Ashoon” is a brand name, not a company.</p>
 
-<h2>On your Mac</h2>
-<p>Buddy reads the events Claude Code sends to its local hooks: your session’s folder name, its state, the tool it runs, permission requests and questions, and Claude’s latest prompt and reply. It keeps them in memory to show them to you, and never sends them anywhere except your own iCloud (below). Connecting Buddy changes your Claude Code settings only after you review the change, and keeps a backup.</p>
+<h2>The short version</h2>
+<ul>
+<li>The apps have no account, no analytics, no ads, no tracking and no Buddy server. They send me nothing.</li>
+<li>What Buddy shows stays on your Mac and, if you use the iPhone app, in the private database of your own iCloud account. I cannot read it.</li>
+<li>Requests, questions, answers and messages are deleted from your iCloud once they are used, or once they are about 20 minutes old, while Buddy for Mac is running.</li>
+<li>The website sets no cookies and has no analytics. Like any website, the companies that host and serve it see your IP address and basic request details.</li>
+<li>If you email me, I see what you send.</li>
+</ul>
 
-<h2>With the iPhone app</h2>
-<p>The Mac and the iPhone talk through the private database of your own iCloud account, which only you can read. Command text, project names, questions, answers, messages and the latest prompt and reply are stored there as encrypted fields. Requests and messages are removed after use or within about 20 minutes. Allowing a request or sending a message asks for Face ID or your passcode; that check happens on your iPhone, and Buddy never sees your biometrics.</p>
+<h2>Who is responsible</h2>
+<p>Sergey Hovakimyan is responsible for this website and for the emails you send me (the “controller” under the EU and UK GDPR). Contact: <a href="mailto:buddy@ashoon.dev">buddy@ashoon.dev</a>.</p>
+<p>The apps run on your own devices, and the data they share between your Mac and iPhone is kept in your own iCloud account, which Apple runs under its own terms. I have no access to that data and do not decide what happens to it beyond how the apps are built.</p>
+
+<h2>Buddy for Mac</h2>
+<p>Claude Code runs Buddy’s small helper, <code>buddy-hook</code>, through its hooks. The helper passes each event to the Buddy app over a connection on your Mac that only your user account can open. An event can include the name of the project folder, the session’s state, the tool Claude wants to use with its command or a summary of it, permission requests, Claude’s questions and their options, your latest prompt and Claude’s latest reply. Buddy keeps this in memory to show it to you. It leaves your Mac only if you use the iPhone app (below).</p>
+<p>On your Mac, Buddy also keeps:</p>
+<ul>
+<li>its settings (sound, character, and the “answer questions” and “keep awake” switches), whether its setup window was shown, and the name of the project folder it first saw during setup;</li>
+<li>a copy of <code>buddy-hook</code> and its connection file in <code>~/Library/Application Support/Buddy</code>;</li>
+<li>when you confirm the change, Buddy’s entries in <code>~/.claude/settings.json</code>, plus a dated backup of the previous file next to it (<code>settings.json.buddy-backup-…</code>). Backups stay until you delete them;</li>
+<li>short technical notes in macOS’s own system log, such as the ID of a request or whether a message could be typed. These notes do not contain the text of your commands, questions or messages.</li>
+</ul>
+<p>Buddy for Mac does not check for updates and does not contact any server. Its only network traffic is the iCloud link to your iPhone. A link such as “GitHub” in its settings opens in your browser only when you click it. While Claude works, Buddy asks macOS not to put the Mac to sleep; this is a power setting and involves no data.</p>
+
+<h2>The iPhone app and your iCloud</h2>
+<p>When the Mac and the iPhone are signed in to the same Apple Account, they exchange records through Buddy’s area of the private database of your iCloud account. Only your Apple Account can read that database; I cannot. The records hold:</p>
+<ul>
+<li>for each session: the project folder name, its state, the last tool used, your latest prompt and Claude’s latest reply, how many helper agents are running and whether Claude is waiting for a message;</li>
+<li>for each request or question: the command or summary, the questions and options, and when it expires;</li>
+<li>your decision (allow or deny), your answers, and the messages you send to Claude.</li>
+</ul>
+<p>Project names, tools, commands, prompts, replies, questions, answers and message text are stored as encrypted fields, so not even the iCloud developer tools show their text. The remaining details, such as record and session IDs, states, times, counts and the allow or deny decision, are stored in the same private database without that extra encryption.</p>
+<p>The iPhone app does not keep its own copy of your sessions; it reads them from iCloud while it runs. Before the app allows a request, sends an answer or sends a message, it asks for Face ID, Touch ID or your passcode. When you act from a notification, iOS asks you to unlock the iPhone first. iOS does that check: Buddy only learns whether it passed and never sees your face, fingerprint or passcode. Deny needs no check.</p>
 
 <h2>Notifications</h2>
-<p>Push notifications are delivered by Apple. The push itself carries no command or question text; your iPhone fetches it from your iCloud and shows it, and iOS hides it on the lock screen until your iPhone is unlocked.</p>
+<p>Notifications are delivered by Apple’s push service. The push itself carries only a fixed text (“Claude Code needs approval” or “Claude is asking”) and a reference to the record, never the command, project or question. Buddy’s notification extension on your iPhone then fetches the details from your iCloud and shows them. With the iOS default, “Show Previews: When Unlocked”, the details stay hidden on the lock screen until the iPhone is unlocked; if you change that setting, they may show on the lock screen. Notifications stay in Notification Center until you clear them. Silent pushes from Apple also tell the Mac when you have answered.</p>
 
-<h2>Typing into your terminal</h2>
-<p>If you allow it, Buddy types the messages you send from your iPhone into the iTerm2 or Terminal tab of the Claude Code session they are for. macOS asks your permission first, and you can withdraw it in System Settings › Privacy &amp; Security › Automation.</p>
+<h2>Messages to Claude and typing into your terminal</h2>
+<p>When you send a message from the iPhone, Buddy for Mac types it into the tmux pane, iTerm2 tab or Terminal tab of that Claude Code session, but only if no key was pressed on the Mac in the last few seconds and Claude Code is the program in front. Typing into iTerm2 or Terminal needs your permission, which macOS asks for first; you can withdraw it in System Settings › Privacy &amp; Security › Automation. Otherwise the message reaches Claude through Claude Code’s Stop hook.</p>
+<p>Either way, the message becomes part of your Claude Code session, and Claude Code sends it to Anthropic just like anything you type, under your own agreement with Anthropic. The same is true of your answers to Claude’s questions. Buddy sends nothing to Anthropic itself, and I receive nothing.</p>
+
+<h2>Try a sample</h2>
+<p>“Try a sample” in the iPhone app shows made-up sessions, a request and a question. They exist only in the app’s memory on your iPhone. Nothing you do in the sample reaches iCloud, a Mac or me.</p>
+
+<h2>The website</h2>
+<p>The website is a set of static pages. It sets no cookies, has no analytics, trackers or forms, and I do not build visitor profiles. When you visit:</p>
+<ul>
+<li><strong>Hosting.</strong> Railway serves the pages. Its servers receive your IP address and the usual request details (the page, the time, your browser’s user agent and the referring page) and may keep them in logs under Railway’s policies. I can see these logs in Railway’s dashboard and use them only to run and protect the site.</li>
+<li><strong>DNS and delivery.</strong> Cloudflare answers the DNS lookups for ashoon.dev. If I turn on Cloudflare’s proxy later, Cloudflare will also deliver and protect the site as a content delivery network, and will then see the same request details.</li>
+<li><strong>Fonts.</strong> The pages load fonts from Google Fonts (fonts.googleapis.com and fonts.gstatic.com), so your browser sends your IP address and request details to Google.</li>
+<li><strong>Downloads and links.</strong> “Download for Mac” takes you to GitHub, which hosts the app and its source code and issue tracker. LinkedIn and GitHub links take you to those sites. They see your visit under their own policies. From GitHub I can see how many times a file was downloaded, not who downloaded it.</li>
+<li><strong>Your browser.</strong> If you pause the page’s animation, your browser remembers that choice under the name <code>buddy-motion</code> in its local storage. It never leaves your device; clearing the site’s data in your browser removes it.</li>
+</ul>
+
+<h2>When you contact me</h2>
+<p>If you email <a href="mailto:buddy@ashoon.dev">buddy@ashoon.dev</a>, I receive your email address, your name if you include it, and your message. I use them only to reply and to deal with your request, and I keep them only as long as that takes. Issues you open on GitHub are public and handled under GitHub’s terms.</p>
+
+<h2>The App Store and Apple</h2>
+<p>Apple distributes the iPhone app through the App Store and handles your App Store account, downloads and purchases under its own policies. Apple gives app developers download and sales figures, and, if you have chosen in your device settings to share analytics with app developers, crash reports and usage statistics that Apple prepares. Those come from Apple, not from Buddy, and I use them only to understand and fix the app.</p>
+
+<h2>Who else receives what</h2>
+<p>The apps contain no third-party code: no analytics, advertising or tracking libraries. They share no data with anyone. These services receive data because of how Buddy works or is hosted, each under its own privacy policy:</p>
+<ul>
+<li><a href="https://www.apple.com/legal/privacy/">Apple</a>: stores Buddy’s records in your iCloud, delivers push notifications, runs the App Store, and checks Face ID or your passcode on your iPhone.</li>
+<li><a href="https://www.anthropic.com/legal/privacy">Anthropic</a>: receives your messages and answers only through your own Claude Code, never from Buddy directly.</li>
+<li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a>: hosts the Mac app download, the source code and the issue tracker.</li>
+<li><a href="https://railway.com/legal/privacy">Railway</a>: hosts the website.</li>
+<li><a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>: provides the website’s DNS, and possibly delivery and protection later.</li>
+<li><a href="https://policies.google.com/privacy">Google</a>: serves the website’s fonts.</li>
+</ul>
+<p>I do not sell or rent personal information, and I do not share it for advertising.</p>
+
+<h2>How long data is kept</h2>
+<ul>
+<li><strong>On your Mac:</strong> session details stay in memory until the session ends, until it has been quiet for 30 minutes, or until Buddy quits. Settings and backups stay until you remove them.</li>
+<li><strong>In your iCloud:</strong> a message is deleted once the Mac has handed it to Claude. While Buddy for Mac is running with the iPhone link on, it checks every minute and deletes requests, questions, decisions, answers and messages that are more than about 20 minutes old. A session’s record is deleted when the session ends or has been quiet for 30 minutes, and records left from an earlier run are deleted the next time Buddy for Mac starts. If Buddy for Mac is not running (for example, you quit it or your Mac is off), these records wait in your iCloud until it runs again or you delete them.</li>
+<li><strong>On your iPhone:</strong> notifications stay until you clear them.</li>
+<li><strong>Website:</strong> the motion choice stays in your browser until you clear it. Hosting and DNS logs are kept by Railway and Cloudflare for the periods their policies set.</li>
+<li><strong>Email:</strong> as long as needed to deal with your request.</li>
+</ul>
+
+<h2>Deleting Buddy’s data</h2>
+<ul>
+<li><strong>Mac:</strong> in Buddy’s settings choose Uninstall hooks, quit Buddy and delete the app. You can then delete <code>~/Library/Application Support/Buddy</code> and any <code>settings.json.buddy-backup-…</code> files in <code>~/.claude</code>. The <a href="https://github.com/Hovakimyan/Buddy/blob/main/docs/installing.md">installation guide</a> has the steps.</li>
+<li><strong>iCloud:</strong> open Buddy for Mac with the iPhone link on and leave it running for a while; it deletes old and leftover records by itself. You can also remove Buddy’s data from your iCloud in your Apple Account’s iCloud storage settings on your iPhone or Mac, where apps that keep data in iCloud are listed. Because I have no access to your iCloud, I cannot delete this data for you, but I am glad to help you do it.</li>
+<li><strong>iPhone:</strong> delete the app and clear its notifications.</li>
+<li><strong>Website:</strong> clear the site’s data in your browser.</li>
+</ul>
+
+<h2>Security</h2>
+<p>Buddy’s connection on your Mac is open only to your user account. The records it shares with your iPhone stay in your private iCloud database, with their text in encrypted fields. Push notifications carry no command or question text. Every Allow, answer and message on the iPhone needs Face ID, Touch ID, your passcode or an unlocked iPhone. No system is perfectly secure, so keep your Apple Account, Mac and iPhone protected with a strong passcode and two-factor authentication.</p>
+
+<h2>International transfers</h2>
+<p>The services listed above may process data in the United States and other countries. Where they move data from the EU, the EEA or the UK, they rely on the safeguards described in their own policies, such as adequacy decisions or standard contractual clauses. Emails you send me are processed where my email provider and I are.</p>
+
+<h2>Legal bases (EU and UK)</h2>
+<p>Where I am the controller, I rely on these legal bases:</p>
+<ul>
+<li>delivering the website, keeping its logs and loading its fonts: my legitimate interest in providing a working, secure website;</li>
+<li>answering your emails: my legitimate interest in replying to you, or taking steps you asked for;</li>
+<li>remembering your motion choice in your browser: it is stored only because you asked for it, to provide that function.</li>
+</ul>
+<p>You can object to processing based on legitimate interests at any time by writing to me.</p>
+
+<h2>Your rights</h2>
+<p>Depending on where you live, you may have the right to ask what personal information I hold about you, to get a copy, to correct it, to delete it, to restrict or object to its use, and to receive it in a portable form. In the EU, the EEA and the UK, you can also complain to your data protection authority (in the UK, the Information Commissioner’s Office).</p>
+<p>If you live in California or another US state with a privacy law, you can ask to know, correct or delete the personal information I hold about you. I do not sell or share personal information, do not use it for targeted advertising, and will not treat you differently for using your rights.</p>
+<p>To use any of these rights, email <a href="mailto:buddy@ashoon.dev">buddy@ashoon.dev</a>. I will answer within the time the law sets (under the GDPR, normally one month) and may ask you to confirm it is really you. In practice, the only personal information I may hold is your emails; the apps’ data is in your own iCloud, and website logs are kept by the hosting providers.</p>
 
 <h2>Children</h2>
-<p>Buddy is a developer tool and is not directed at children.</p>
+<p>Buddy is a tool for software developers. It is not directed at children, and I do not knowingly collect personal information from children under 13 (or under the age of digital consent where you live). If you believe a child has sent me personal information, write to me and I will delete it.</p>
 
-<h2>Changes and contact</h2>
-<p>If this policy changes, this page changes with it. Questions? <a href="support.html">Get in touch</a>.</p>
+<h2>Changes</h2>
+<p>If this policy changes, this page changes with it, and the date at the top is updated. If a change is significant, for example if Buddy starts to send data anywhere new, I will say so on this page and in the app’s release notes before it takes effect.</p>
 
-<footer>© 2026 Buddy · Built by <a href="https://github.com/Hovakimyan">Sergey Hovakimyan</a> · <a href="./">Home</a> · <a href="support.html">Support</a></footer>
+<h2>Contact</h2>
+<p>Privacy questions and requests: <a href="mailto:buddy@ashoon.dev">buddy@ashoon.dev</a>. For help with the app, see <a href="support.html">Support</a>. The <a href="terms.html">Terms of Use</a> also apply.</p>
+
+<footer>© 2026 Buddy · Built by <a href="https://github.com/Hovakimyan">Sergey Hovakimyan</a> · <a href="./">Home</a> · <a href="support.html">Support</a> · <a href="terms.html">Terms</a></footer>
 </main>
 </body>
 </html>

@@ -20,6 +20,8 @@ struct SettingsView: View {
             HStack {
                 Text("Built by Sergey Hovakimyan").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Link("Privacy", destination: URL(string: "https://buddy.ashoon.dev/privacy.html")!)
+                Link("Terms", destination: URL(string: "https://buddy.ashoon.dev/terms.html")!)
                 Link("GitHub", destination: URL(string: "https://github.com/Hovakimyan/Buddy")!)
             }
 

@@ -32,6 +32,12 @@ Replace older local builds after testing; previously exported artifacts retain t
 2. **Developer ID Application certificate** (signs the Mac app and dmg outside the App Store). Xcode > Settings > Accounts >
    your team > Manage Certificates > **+** > Developer ID Application. Check it is in your login keychain:
    `security find-identity -v -p codesigning` lists one `Developer ID Application: ...` line.
+   Then a **Developer ID provisioning profile** for the Mac app (it carries iCloud and push, which a Developer ID app
+   needs a profile for): developer.apple.com > Certificates, Identifiers & Profiles > Profiles > **+** > Developer ID,
+   App ID `com.sergeyhovakimyan.buddy.mac`, that certificate, name **Buddy Mac Developer ID** (the name the script
+   uses; `BUDDY_MAC_PROFILE` overrides it). Download it and double-click it, or copy it into
+   `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. The export signs manually with it; automatic signing with
+   the API key fails ("Cloud signing permission error").
 3. **App Store Connect API key with the Admin role.** App Store Connect > Users and Access > Integrations > App Store Connect
    API > Team Keys > **+**, access **Admin** (other roles often cannot create the cloud-managed distribution certificate).
    Download `AuthKey_<KEYID>.p8` once (Apple lets you download it only once), keep it outside the repo with mode 600
@@ -222,15 +228,12 @@ custom domain in Railway, and the DNS record together.
 No signed or notarized build, TestFlight upload or real-device check has run: there was no paid account when this was
 written. First real run, expect and check:
 
-1. `release.sh` signed mode: certificate lookup, archive with the Developer ID flow, that the export re-signs the embedded
-   `buddy-hook` (the script's pre-notarization checks fail loudly if not), the dmg signature, `notarytool` acceptance, stapling.
-   On a fresh team pass `--register-device` once, so the development-signed archive has a profile that lists this Mac.
-   Two points are unverified. (a) The archive carries the development cloud entitlements and the Developer ID export is
-   expected to write the Production container environment and production push (the script checks both before
-   notarization). (b) The export options combine `signingStyle` `automatic` with `signingCertificate` set to
-   the resolved SHA-1, but `xcodebuild -help` says `signingCertificate` is for manual signing only, so the SHA-1 may be
-   ignored. Task 17 must check that both the app and the dmg are signed by the intended Developer ID certificate (the
-   script only checks the authority and the team, not which certificate).
+1. `release.sh` signed mode, first real run on 24 October 2026 (Observed): the archive, the Developer ID export and every
+   pre-notarization check pass, and the app, `buddy-hook` and the dmg are signed by the Developer ID certificate with a
+   secure timestamp and the hardened runtime. Two fixes came out of it: the export signs manually with the Developer ID
+   profile (automatic signing with the API key fails with "Cloud signing permission error"), and the checks no longer
+   pipe into `grep -q`, which under `pipefail` failed good signatures (SIGPIPE, exit 141). Still to watch: notarization
+   time on a new team, and stapling.
 2. `testflight.sh`: that automatic signing with the API key creates the distribution certificate and App Store profile, that
    the exported `.ipa` really has `aps-environment` `production` and the Production container environment (the script checks
    it), and that `xcrun altool --upload-app` accepts the flags (fallback: `--upload-with xcodebuild`).

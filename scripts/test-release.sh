@@ -262,6 +262,8 @@ assert_has "signed dry-run: build number passed" "${OUT}" "CURRENT_PROJECT_VERSI
 assert_has "signed dry-run: export plist method" "${OUT}" "<string>developer-id</string>"
 assert_has "signed dry-run: export plist team (masked)" "${OUT}" "<string><BUDDY_TEAM_ID></string>"
 assert_has "signed dry-run: export plist uses the resolved SHA-1" "${OUT}" "<string>${HASH_A}</string>"
+assert_has "signed dry-run: export plist signs manually" "${OUT}" "<string>manual</string>"
+assert_has "signed dry-run: export plist names the Developer ID profile" "${OUT}" "<string>Buddy Mac Developer ID</string>"
 assert_has "signed dry-run: export plist Production container" "${OUT}" "<key>iCloudContainerEnvironment</key>"
 assert_has "signed dry-run: API key flags are passed (values masked)" "${OUT}" "-authenticationKeyID '<BUDDY_ASC_KEY_ID>'"
 assert_has "signed dry-run: key path is masked" "${OUT}" "-authenticationKeyPath '<BUDDY_ASC_KEY_PATH>'"

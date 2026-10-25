@@ -77,6 +77,9 @@ Environment (signed mode):
                          hash itself, from the name, and shows it in the plan).
   BUDDY_NOTARY_PROFILE   notarytool keychain profile (xcrun notarytool store-credentials). Required unless
                          --skip-notarize.
+  BUDDY_MAC_PROFILE      Name of the Developer ID provisioning profile for com.sergeyhovakimyan.buddy.mac, default
+                         "Buddy Mac Developer ID". The export signs manually with it; it must be installed in
+                         ~/Library/Developer/Xcode/UserData/Provisioning Profiles (docs/releasing.md, setup step 2).
   BUDDY_ASC_KEY_PATH, BUDDY_ASC_KEY_ID, BUDDY_ASC_ISSUER_ID
                          Optional, all three or none: an App Store Connect API key passed to xcodebuild as
                          -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID, for CI. Without
@@ -172,6 +175,7 @@ add_mask "${BUDDY_ASC_KEY_ID:-}" "<BUDDY_ASC_KEY_ID>"
 
 SIGN_IDENTITY="${BUDDY_SIGN_IDENTITY:-Developer ID Application}"
 NOTARY_PROFILE="${BUDDY_NOTARY_PROFILE:-}"
+MAC_PROFILE="${BUDDY_MAC_PROFILE:-Buddy Mac Developer ID}"
 
 if [ -n "${TEAM_ID}" ] && [ "${FORCE_UNSIGNED}" -eq 0 ]; then
   MODE="signed"
@@ -312,9 +316,10 @@ preflight() {
 # ---- steps ------------------------------------------------------------------------------------------------------
 
 # The ExportOptions.plist for -exportArchive. Written into the temp folder, never into git.
-# UNVERIFIED: `xcodebuild -help` says signingCertificate is for manual signing only, and signingStyle here is automatic, so the
-# SHA-1 may be ignored (the app could be signed by another Developer ID certificate than the dmg, which uses SIGN_HASH).
-# Plan Task 17 must check that both are signed by the intended certificate.
+# Manual signing with a Developer ID provisioning profile (BUDDY_MAC_PROFILE, installed for Xcode). Automatic signing
+# fails with an App Store Connect API key: Apple gives API keys no access to cloud-managed Developer ID certificates
+# ("Cloud signing permission error", then "No profiles for 'com.sergeyhovakimyan.buddy.mac' were found"). Manual
+# signing also honours signingCertificate, so the app and the dmg are signed by the same certificate (SIGN_HASH).
 emit_export_plist() {
   cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -324,11 +329,16 @@ emit_export_plist() {
 	<key>method</key>
 	<string>developer-id</string>
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
 	<key>teamID</key>
 	<string>${TEAM_ID}</string>
 	<key>signingCertificate</key>
 	<string>${SIGN_HASH}</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.sergeyhovakimyan.buddy.mac</key>
+		<string>${MAC_PROFILE}</string>
+	</dict>
 	<key>iCloudContainerEnvironment</key>
 	<string>Production</string>
 	<key>destination</key>
@@ -479,9 +489,11 @@ write_checksum() {
 # check / check_not (and check_failed) come from lib/common.sh.
 
 # `codesign -d` writes to stderr; fold it into stdout.
-codesign_info_has() { codesign -dvv "$1" 2>&1 | grep -Fq -- "$2"; }
+# grep reads all of its input (no -q): with pipefail, grep -q stops at the first match, codesign then dies of SIGPIPE
+# (exit 141) and a signature that is fine fails its check.
+codesign_info_has() { codesign -dvv "$1" 2>&1 | grep -F -- "$2" >/dev/null; }
 entitlements_of() { codesign -d --entitlements :- "$1" 2>/dev/null; }
-entitlements_have() { entitlements_of "$1" | grep -Fq -- "$2"; }
+entitlements_have() { entitlements_of "$1" | grep -F -- "$2" >/dev/null; }
 # True when the entitlement key $2 of $1 has exactly the string value $3. Key-specific: plutil extracts that one key
 # (dots in the key escaped, they separate key path components), whatever the layout of the XML codesign prints.
 entitlement_value_is() {

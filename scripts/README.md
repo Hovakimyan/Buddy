@@ -39,16 +39,17 @@ warning when other users can read it.
 | `BUDDY_TEAM_ID` | Team ID (10 characters). Selects signed mode. Environment only, never committed. The script's own output, and the tool output it relays, show it as `<BUDDY_TEAM_ID>` (Xcode's own logs in `dist/build/Logs` may contain it). |
 | `BUDDY_SIGN_IDENTITY` | Default `Developer ID Application`. A certificate name or prefix (not a SHA-1: the script resolves the SHA-1 itself). Resolved to exactly one valid certificate of the team (the same certificate in two keychains counts once); zero or several different matches stop the script before building. |
 | `BUDDY_NOTARY_PROFILE` | `notarytool` keychain profile (`xcrun notarytool store-credentials <name>`). Required unless `--skip-notarize`. |
+| `BUDDY_MAC_PROFILE` | Default `Buddy Mac Developer ID`. Name of the Developer ID provisioning profile for `com.sergeyhovakimyan.buddy.mac`, installed in `~/Library/Developer/Xcode/UserData/Provisioning Profiles` (`docs/releasing.md`, setup step 2). |
 | `BUDDY_ASC_KEY_PATH`, `BUDDY_ASC_KEY_ID`, `BUDDY_ASC_ISSUER_ID` | Optional, all three or none: an App Store Connect API key, passed to `xcodebuild` as `-authenticationKeyPath`, `-authenticationKeyID`, `-authenticationKeyIssuerID` (for CI). |
 
 Steps: `xcodebuild archive` (hardened runtime, `BuddyMac.cloud.entitlements`, automatic development signing with the
 team; `--register-device` adds `-allowProvisioningDeviceRegistration` so a fresh team registers this Mac), then
-`xcodebuild -exportArchive` with a generated `ExportOptions.plist` (method `developer-id`, automatic signing, the team,
-`iCloudContainerEnvironment` `Production` and the resolved certificate's SHA-1 as `signingCertificate`; written to a temp
-folder, never to git), which should re-sign with Developer ID. Unverified: `xcodebuild -help` says `signingCertificate` is "for manual signing only", so with
-`signingStyle` `automatic` the SHA-1 may be ignored and Xcode may pick another Developer ID certificate for the app than the
-one that signs the dmg. Plan Task 17 must check that both the app and the dmg are signed by the intended certificate
-(the script's checks confirm the authority and the team, not which certificate). The post-build
+`xcodebuild -exportArchive` with a generated `ExportOptions.plist` (method `developer-id`, **manual** signing with the
+Developer ID provisioning profile named in `BUDDY_MAC_PROFILE`, the team, `iCloudContainerEnvironment` `Production` and
+the resolved certificate's SHA-1 as `signingCertificate`; written to a temp folder, never to git), which re-signs with
+Developer ID. Automatic signing does not work here with an App Store Connect API key: Apple gives API keys no access to
+cloud-managed Developer ID certificates, so the export failed with "Cloud signing permission error". Manual signing also
+makes `signingCertificate` count, so the app and the dmg are signed by the same certificate. The post-build
 phase in `Apps/project.yml` signs the embedded `buddy-hook` with hardened runtime and a secure timestamp and no
 entitlements (no iCloud keys). Then the dmg is signed, the signatures are checked **before anything is sent to Apple**,
 and `xcrun notarytool submit --wait --output-format json` runs; the status must be `Accepted`, otherwise the script

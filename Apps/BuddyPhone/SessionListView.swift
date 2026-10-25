@@ -368,6 +368,14 @@ private struct Footer: View {
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
+            // The App Store asks for the privacy policy inside the app as well as on the listing.
+            HStack(spacing: 6) {
+                Link("Privacy", destination: URL(string: "https://buddy.ashoon.dev/privacy.html")!)
+                Text("·")
+                Link("Terms", destination: URL(string: "https://buddy.ashoon.dev/terms.html")!)
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
         .padding(.leading, 4)
     }

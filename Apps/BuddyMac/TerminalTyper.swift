@@ -118,7 +118,11 @@ enum TerminalTyper {
         var error: NSDictionary?
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         if let error {
-            log.error("script failed: \(String(describing: error[NSAppleScript.errorMessage] ?? error), privacy: .public)")
+            // The number is public; the message stays private: it can quote the script, which holds the message text.
+            log.error("""
+                script failed: \(error[NSAppleScript.errorNumber] as? Int ?? 0, privacy: .public) \
+                \(String(describing: error[NSAppleScript.errorMessage] ?? error), privacy: .private)
+                """)
         }
         return error == nil && result?.stringValue == "typed"
     }
