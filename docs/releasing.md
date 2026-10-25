@@ -208,9 +208,11 @@ many redirects". Two side effects of the proxy:
 - Email Address Obfuscation rewrites email addresses into "[email protected]" for visitors without JavaScript, so every
   `mailto:` link in `website/dist` sits between `<!--email_off-->` and `<!--/email_off-->`. Keep that for new ones.
 
-- Cloudflare Web Analytics adds its beacon script to proxied pages. The privacy page promises no analytics, so the
-  `Content-Security-Policy` in `website/Caddyfile` lets only the site's own `script.js` run, and browsers block the
-  beacon (one CSP line in the console). Turning Web Analytics off for `buddy.ashoon.dev` in Cloudflare removes that line.
+- The website's analytics is Cloudflare Web Analytics: Cloudflare adds its beacon to proxied pages, and the dashboard is
+  **Analytics & Logs > Web Analytics**. The apps have no analytics. The `Content-Security-Policy` in `website/Caddyfile`
+  lets only `script.js` and `static.cloudflareinsights.com` run. Changing or adding an analytics tool means updating
+  that policy and the Website section of `privacy.html` in the same commit, before it goes live (the policy promises
+  notice of any new place data goes).
 
 The privacy page and the terms say Cloudflare delivers the site. If the proxy is ever turned off, update both.
 

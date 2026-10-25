@@ -35,7 +35,7 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px;
 <li>The apps have no account, no analytics, no ads, no tracking and no Buddy server. They send me nothing.</li>
 <li>What Buddy shows stays on your Mac and, if you use the iPhone app, in the private database of your own iCloud account. I cannot read it.</li>
 <li>Requests, questions, answers and messages are deleted from your iCloud once they are used, or once they are about 20 minutes old, while Buddy for Mac is running.</li>
-<li>The website sets no cookies and has no analytics. Like any website, the companies that host and serve it see your IP address and basic request details.</li>
+<li>The website sets no cookies. It counts visits with Cloudflare Web Analytics, which shows me totals, not individual visitors. Like any website, the companies that host and serve it see your IP address and basic request details.</li>
 <li>If you email me, I see what you send.</li>
 </ul>
 
@@ -75,10 +75,11 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px;
 <p>“Try a sample” in the iPhone app shows made-up sessions, a request and a question. They exist only in the app’s memory on your iPhone. Nothing you do in the sample reaches iCloud, a Mac or me.</p>
 
 <h2>The website</h2>
-<p>The website is a set of static pages. It sets no cookies, has no analytics, trackers or forms, and I do not build visitor profiles. When you visit:</p>
+<p>The website is a set of static pages. It sets no cookies, has no forms or ads, and I do not build profiles of individual visitors. When you visit:</p>
 <ul>
 <li><strong>Hosting.</strong> Railway serves the pages. Its servers receive your IP address and the usual request details (the page, the time, your browser’s user agent and the referring page) and may keep them in logs under Railway’s policies. I can see these logs in Railway’s dashboard and use them only to run and protect the site.</li>
 <li><strong>DNS and delivery.</strong> Cloudflare answers the DNS lookups for ashoon.dev and delivers and protects the site as a content delivery network, so it also receives the same request details and may keep them in logs under Cloudflare’s policies.</li>
+<li><strong>Analytics.</strong> To learn whether people find and use Buddy, the site uses Cloudflare Web Analytics. A small Cloudflare script on each page reports the page you viewed, the site that sent you, your country, your device type, browser and operating system, and how fast the page loaded. It uses no cookies or local storage, Cloudflare says it does not fingerprint visitors through their IP address or browser details, and it does not record the part of an address after a “?”. I see totals, not individuals.</li>
 <li><strong>Fonts.</strong> The pages load fonts from Google Fonts (fonts.googleapis.com and fonts.gstatic.com), so your browser sends your IP address and request details to Google.</li>
 <li><strong>Downloads and links.</strong> “Download for Mac” takes you to GitHub, which hosts the app and its source code and issue tracker. LinkedIn and GitHub links take you to those sites. They see your visit under their own policies. From GitHub I can see how many times a file was downloaded, not who downloaded it.</li>
 <li><strong>Your browser.</strong> If you pause the page’s animation, your browser remembers that choice under the name <code>buddy-motion</code> in its local storage. It never leaves your device; clearing the site’s data in your browser removes it.</li>
@@ -97,7 +98,7 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px;
 <li><a href="https://www.anthropic.com/legal/privacy">Anthropic</a>: receives your messages and answers only through your own Claude Code, never from Buddy directly.</li>
 <li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a>: hosts the Mac app download, the source code and the issue tracker.</li>
 <li><a href="https://railway.com/legal/privacy">Railway</a>: hosts the website.</li>
-<li><a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>: provides the website’s DNS and delivers and protects the site.</li>
+<li><a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>: provides the website’s DNS, delivers and protects the site, and counts its visits (Cloudflare Web Analytics).</li>
 <li><a href="https://policies.google.com/privacy">Google</a>: serves the website’s fonts.</li>
 </ul>
 <p>I do not sell or rent personal information, and I do not share it for advertising.</p>
@@ -107,7 +108,7 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px;
 <li><strong>On your Mac:</strong> session details stay in memory until the session ends, until it has been quiet for 30 minutes, or until Buddy quits. Settings and backups stay until you remove them.</li>
 <li><strong>In your iCloud:</strong> a message is deleted once the Mac has handed it to Claude. While Buddy for Mac is running with the iPhone link on, it checks every minute and deletes requests, questions, decisions, answers and messages that are more than about 20 minutes old. A session’s record is deleted when the session ends or has been quiet for 30 minutes, and records left from an earlier run are deleted the next time Buddy for Mac starts. If Buddy for Mac is not running (for example, you quit it or your Mac is off), these records wait in your iCloud until it runs again or you delete them.</li>
 <li><strong>On your iPhone:</strong> notifications stay until you clear them.</li>
-<li><strong>Website:</strong> the motion choice stays in your browser until you clear it. Hosting and DNS logs are kept by Railway and Cloudflare for the periods their policies set.</li>
+<li><strong>Website:</strong> the motion choice stays in your browser until you clear it. Hosting and DNS logs are kept by Railway and Cloudflare for the periods their policies set. Cloudflare keeps full Web Analytics data for 7 days and then a reduced sample; I can see the last six months.</li>
 <li><strong>Email:</strong> as long as needed to deal with your request.</li>
 </ul>
 
@@ -129,6 +130,7 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 20px;
 <p>Where I am the controller, I rely on these legal bases:</p>
 <ul>
 <li>delivering the website, keeping its logs and loading its fonts: my legitimate interest in providing a working, secure website;</li>
+<li>counting visits with Cloudflare Web Analytics: my legitimate interest in knowing whether people find and use Buddy, done without cookies and without identifying you;</li>
 <li>answering your emails: my legitimate interest in replying to you, or taking steps you asked for;</li>
 <li>remembering your motion choice in your browser: it is stored only because you asked for it, to provide that function.</li>
 </ul>
