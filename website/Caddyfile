@@ -1,0 +1,16 @@
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+	# /privacy and /support work as well as /privacy.html and /support.html (App Store Connect links to them).
+	try_files {path} {path}.html
+	file_server
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

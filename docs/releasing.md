@@ -45,8 +45,9 @@ Replace older local builds after testing; previously exported artifacts retain t
    `buddy-notary` is the profile name you will put in `BUDDY_NOTARY_PROFILE`. (With an Apple ID instead:
    `--apple-id`, `--team-id` and an app-specific password, which `notarytool` asks for.)
 5. **App IDs and the iCloud container.** `com.sergeyhovakimyan.buddy.mac` and `com.sergeyhovakimyan.buddy.phone`, both with iCloud
-   (CloudKit, container `iCloud.com.sergeyhovakimyan.buddy`) and Push Notifications: `docs/cloudkit-setup.md` sections 2 and 8.
-   Automatic signing with `-allowProvisioningUpdates` creates them the first time.
+   (CloudKit, container `iCloud.com.sergeyhovakimyan.buddy`) and Push Notifications, plus the notification service
+   `com.sergeyhovakimyan.buddy.phone.notifications` (iCloud with the same container, no push): `docs/cloudkit-setup.md`
+   sections 2 and 8. Automatic signing with `-allowProvisioningUpdates` creates them the first time.
 6. **Register your iPhone first.** A team with no registered device cannot create the development profile the TestFlight
    archive is signed with. Connect the iPhone (Developer Mode on, trust this Mac) and run:
 
@@ -61,11 +62,13 @@ Replace older local builds after testing; previously exported artifacts retain t
 7. **First export.** With the API key from step 3 in the environment (see "iPhone: TestFlight" below), run
    `scripts/testflight.sh --export-only`. It creates the App ID and profiles and checks the exported `.ipa`.
 8. **App Store Connect app record** for `com.sergeyhovakimyan.buddy.phone` (App Store Connect > Apps > **+** > New App). It needs the
-   App ID that step 7 created.
+   App ID that step 7 created. Name: **Buddy by Ashoon** (the store name; the home-screen name stays `Buddy`, from
+   `CFBundleDisplayName`).
 9. **CloudKit Production schema.** Notarized and TestFlight builds use the **Production** CloudKit environment, which
    starts empty. Run a signed *development* build of both apps (the Mac per `cloudkit-setup.md` section 3, the phone from step
-   6), start a Claude Code session, trigger a permission request and answer it from the iPhone, so the `Session`, `Approval`
-   and `Decision` record types exist in Development. Then CloudKit Dashboard > container `iCloud.com.sergeyhovakimyan.buddy` >
+   6), start a Claude Code session, answer a permission request and an `AskUserQuestion` question from the iPhone and send
+   a message from its session screen, so all six record types (`Session`, `Approval`, `Decision`, `Question`, `Answer`,
+   `Message`) and their fields exist in Development; check them against `cloudkit-setup.md` section 5. Then CloudKit Dashboard > container `iCloud.com.sergeyhovakimyan.buddy` >
    Schema > **Deploy Schema Changes...** to Production. Deploy again whenever a field is added.
 10. **Internal testers.** TestFlight internal testers are App Store Connect users: add each colleague at App Store Connect >
    Users and Access (they accept the invite for their Apple Account email), then TestFlight > Internal Testing > create a
@@ -110,6 +113,19 @@ on its flags, `--upload-with xcodebuild` uploads instead, but it signs the packa
 one the script verified (it warns). Last resort: upload the `.ipa` from `--export-only` with Apple's Transporter app.
 Delete `dist/testflight-build` when done: Xcode's own logs in it contain your Team ID.
 
+### iPhone: App Store review
+
+The reviewer has no Mac running Buddy, so the app has a sample: on an empty session list (no Mac, or iCloud off),
+**Try a sample** shows made-up sessions, an approval and a question from an in-memory cloud (`SampleCloud.swift`); a
+banner says so and **Leave** goes back. Nothing in it reaches iCloud or a Mac. Paste this into App Store Connect >
+App Review Information > Notes:
+
+> Buddy is the iPhone companion of Buddy for Mac (https://buddy.ashoon.dev), which shows Claude Code sessions running
+> on the user's Mac. The two talk only through the user's private iCloud database, so without a Mac the list is empty.
+> To try every screen without a Mac, tap "Try a sample" on the first screen: it shows sample sessions, a permission
+> request (Allow asks for Face ID) and a question, and lets you send a message to a session. A banner marks the
+> sample; "Leave" returns. No account or sign-in is needed.
+
 ## Before you send it: checklist
 
 - [ ] The sha256 file matches: `cd dist && shasum -a 256 -c Buddy-<version>.dmg.sha256`.
@@ -142,6 +158,56 @@ gh release create v<version> dist/Buddy.dmg dist/Buddy-<version>.dmg dist/Buddy-
 
 Publish it (no `--draft`) only after the checklist above passed: the website links to whatever the latest published
 release is. Check the link afterwards with `curl -sIL <link> | grep -i '^location\|^HTTP'`.
+
+## Website: Railway and Cloudflare
+
+The site (`website/dist`, plain static files) runs on Railway at https://buddy.ashoon.dev, with the domain's DNS in
+Cloudflare. `website/Dockerfile` serves it with Caddy on the port Railway gives (`PORT`). `/privacy` and `/support`
+work as well as the `.html` names. The App Store listing needs the site live first: its Privacy Policy URL is
+`https://buddy.ashoon.dev/privacy` and its Support URL is `https://buddy.ashoon.dev/support`.
+
+**Railway, once:**
+
+1. railway.com > **New Project** > **Deploy from GitHub repo** > `Hovakimyan/Buddy` (allow the Railway GitHub app to
+   see the repository if it asks).
+2. Open the new service > **Settings**:
+   - **Source > Root Directory:** `website`. Railway then finds `website/Dockerfile` and builds with it.
+   - **Source > Branch:** `main`. Every push to `main` deploys again.
+   - Optional: **Watch Paths** `/website/**`, so pushes that only change the apps do not rebuild the site.
+3. Wait for the first deploy to turn green. Then **Settings > Networking > Generate Domain** gives a
+   `*.up.railway.app` address: open it and check the page before touching DNS.
+4. **Settings > Networking > + Custom Domain** > `buddy.ashoon.dev`. If Railway asks for a port, use the port the deploy
+   log shows Caddy listening on (it follows `PORT`; 8080 when Railway sets none). Railway then shows **two records**: a
+   `CNAME` and a `TXT`. Leave this page open.
+
+**Cloudflare, once** (dash.cloudflare.com > `ashoon.dev` > **DNS > Records > Add record**):
+
+1. **CNAME**: Name `buddy`, Target: the `*.up.railway.app` value Railway shows. Proxy status: **DNS only** (grey cloud).
+2. **TXT**: the Name and Content exactly as Railway shows them. Both records are required: without the TXT the domain
+   does not verify and returns 404.
+3. Back in Railway, wait for the green check next to the domain. Railway then issues the HTTPS certificate itself.
+   Usually minutes; DNS can take longer.
+
+**DNS only or proxied.** Use DNS only (grey cloud): Railway handles HTTPS, and nothing else in the `ashoon.dev` zone
+changes. Turn on the proxy (orange cloud) only if you want Cloudflare's cache or protection. In that case Railway
+requires SSL/TLS mode **Full**, not Full (strict) and not Flexible, which loops with "too many redirects". That mode is
+set for the whole `ashoon.dev` zone, so check the other `ashoon.dev` sites first. To change it only for this site, use a
+Configuration Rule (Rules > Configuration Rules, hostname `buddy.ashoon.dev`, SSL: Full).
+
+**Check:**
+
+```sh
+dig +short buddy.ashoon.dev CNAME          # the *.up.railway.app target (DNS only)
+curl -sI https://buddy.ashoon.dev/ | head -1          # HTTP/2 200
+curl -sI https://buddy.ashoon.dev/privacy | head -1   # HTTP/2 200
+```
+
+To try the container locally:
+`docker build -t buddy-site website && docker run --rm -e PORT=8080 -p 8080:8080 buddy-site`, then open
+http://localhost:8080.
+
+If the domain changes later, update the canonical and `og:` URLs in `index.html`, `privacy.html` and `support.html`, the
+custom domain in Railway, and the DNS record together.
 
 ## Version and build numbers
 

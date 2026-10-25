@@ -15,7 +15,7 @@ final class PhoneAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         ])
         Task { @MainActor in
             #if DEBUG
-            if !DemoCloud.isRequested { _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge]) }
+            if !SampleCloud.isRequested, !SampleCloud.triesSampleAtLaunch { _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge]) }
             #else
             _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
             #endif
@@ -126,9 +126,12 @@ struct RootView: View {
         }
         .task {
             #if DEBUG
-            if let screen = DemoCloud.requestedScreen { controller.path = [screen] }
+            if let screen = SampleCloud.requestedScreen { controller.path = [screen] }
             #endif
             await controller.start()
+            #if DEBUG
+            if SampleCloud.triesSampleAtLaunch { await controller.showSample() }
+            #endif
         }
     }
 }

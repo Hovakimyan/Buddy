@@ -5,4 +5,4 @@ Audience: developers using Claude Code on macOS. Make the companion understandab
 
 User direction: replace the conventional landing page with a creative, interactive experience. Concept: a miniature leave-your-desk adventure: Mac session, request, optional phone handoff, visitor decision. Demonstrations must be identified as simulations. Preserve blue Block character and honest availability.
 
-Hosting: GitHub Pages at https://buddy.ashoon.dev (website/dist/CNAME, .github/workflows/website.yml), deployed from main. The domain may change later; update CNAME, the canonical and og URLs in index.html, privacy.html and support.html together.
+Hosting: Railway at https://buddy.ashoon.dev (website/Dockerfile and Caddyfile, service Root Directory `website`, deployed from main), DNS in Cloudflare; setup in docs/releasing.md, "Website: Railway and Cloudflare". The domain may change later; update the canonical and og URLs in index.html, privacy.html and support.html, the Railway custom domain and the DNS record together.

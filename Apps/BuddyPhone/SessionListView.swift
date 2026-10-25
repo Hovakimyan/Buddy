@@ -34,6 +34,8 @@ struct SessionListView: View {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 28) {
+                if controller.isSample { SampleBanner(controller: controller) }
+
                 Hero(state: state, title: headline.title, detail: headline.detail)
 
                 if let model, !questions.isEmpty || !approvals.isEmpty {
@@ -84,7 +86,12 @@ struct SessionListView: View {
                     }
                 }
 
-                Footer(status: controller.status, connected: connected)
+                // Nothing to show: offer the sample (also how the app is tried without a Mac, for the App Store review).
+                if !loading, !controller.isSample, sessions.isEmpty, approvals.isEmpty, questions.isEmpty {
+                    SampleOffer(controller: controller)
+                }
+
+                Footer(status: controller.status, connected: connected, sample: controller.isSample)
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
@@ -295,15 +302,64 @@ private struct SkeletonSessions: View {
     }
 }
 
+/// Shown at the top while the sample is on: it is made up, and the way back.
+private struct SampleBanner: View {
+    let controller: PhoneController
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sample").font(.subheadline.weight(.semibold))
+                Text("Made-up sessions. Nothing you do here reaches a Mac.").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Leave") {
+                Task {
+                    await controller.leaveSample()
+                    if controller.wantsRemoteNotifications { UIApplication.shared.registerForRemoteNotifications() }
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+        .background(PhoneLook.accent(.question).opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+/// When there is nothing to show: where to get the Mac app, and the sample to look around first.
+private struct SampleOffer: View {
+    let controller: PhoneController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New to Buddy?").font(.headline)
+            Text("Buddy shows the Claude Code sessions on your Mac and lets you answer them here. It needs Buddy for Mac, signed in to the same Apple Account.")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button("Try a sample") { Task { await controller.showSample() } }
+                    .buttonStyle(.borderedProminent)
+                Link("Get Buddy for Mac", destination: URL(string: "https://buddy.ashoon.dev/")!)
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
 private struct Footer: View {
     let status: PhoneCloudStatus
     let connected: Bool
+    let sample: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Circle().fill(connected ? Color.green : Color.orange).frame(width: 8, height: 8).accessibilityHidden(true)
-                Text(status.text).font(.footnote).foregroundStyle(.secondary)
+                Circle().fill(connected && !sample ? Color.green : Color.orange).frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+                Text(sample ? "Sample: not connected to a Mac" : status.text).font(.footnote).foregroundStyle(.secondary)
             }
             HStack(spacing: 6) {
                 Text("Built by Sergey Hovakimyan")

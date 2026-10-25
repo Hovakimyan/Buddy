@@ -108,6 +108,14 @@ The phone link needs the notarized Mac build; the unsigned test build has no iCl
    - **Deny**: on the lock screen, long-press the notification and tap **Deny**. It works without unlocking.
    - **Allow**: tap Allow on the notification, or open the request in the app. Allow becomes active after a moment, then
      Face ID (or your passcode) is asked, and only then it is sent. Cancel Face ID and nothing is sent.
+   - **Questions** (Claude asks you to pick an answer) arrive as "Claude is asking": answer in the app, or long-press the
+     notification for a single question with up to four options.
+8. **Messages to Claude.** Open a session in the app to see the latest prompt and reply, and write what Claude should do
+   next. When the session runs in iTerm2, Terminal or tmux, Buddy types it into the terminal as your own prompt (only
+   while no key was pressed on the Mac for a few seconds); the first time, macOS asks whether Buddy may control iTerm2 or
+   Terminal: click **OK**. In other terminals the message reaches Claude when it next stops (Claude Code shows it as
+   "Stop hook feedback"). In those terminals Claude waits up to 10 minutes after finishing for a message; using the Mac
+   (keyboard, mouse or trackpad) ends the wait.
 
 ## If something is wrong
 
@@ -118,11 +126,12 @@ The phone link needs the notarized Mac build; the unsigned test build has no iCl
 | `Phone link off: iCloud is restricted on this Mac` | A device profile or Screen Time restriction blocks iCloud. Ask IT. |
 | `Phone link off: iCloud is temporarily unavailable`, `check timed out` or `check failed` | Network or iCloud problem. Quit and reopen Buddy to try again. |
 | Menu says `Not listening: ...` | Another Buddy is already running, or the socket is unusable. Quit every Buddy and open one. |
-| No card appears on the Mac | Settings must say "Hooks installed" (see step 6). Start a NEW `claude` session after installing. Buddy must be running (icon in the menu bar). Claude Code only asks for things it has not already allowed. Questions it asks you (pick an answer) and plan approvals are always answered in the terminal. |
+| No card appears on the Mac | Settings must say "Hooks installed" (see step 6). Start a NEW `claude` session after installing. Buddy must be running (icon in the menu bar). Claude Code only asks for things it has not already allowed. Plan approvals are always answered in the terminal. |
 | No notification on the iPhone | iPhone Settings > Notifications > Buddy must be on, and Focus modes can hide it. The Mac must be running with "Phone link on". The first alert can take up to a minute: open the app and pull to refresh. |
 | iPhone list is empty | Same Apple Account and iCloud on both, Buddy running on the Mac, a `claude` session started after the hooks were installed. Pull down to refresh. |
 | Allow is greyed out | It waits a moment after a request appears. It stays off for very long commands or unusual characters ("Allow in terminal" on the Mac, "Allow on your Mac" on the iPhone): answer in the terminal. It is also off once the request has expired (about 10 minutes) or was answered elsewhere. Deny works. |
 | "BuddyMac cannot be opened" or "is damaged" | Unsigned test build: do the Open Anyway step (step 4). Otherwise delete it, download again and check the checksum. |
+| A message shows "Sent" but nothing appears in the terminal | macOS > System Settings > Privacy & Security > Automation: allow Buddy to control iTerm2 or Terminal. If a key was pressed on the Mac in the last few seconds, it is delivered when Claude next stops instead. |
 | Many sessions appear and disappear on the iPhone | Two Macs on one Apple Account is not supported. Use one Mac. |
 
 Maintainers: see [`releasing.md`](releasing.md). Building from source: the [README](../README.md).

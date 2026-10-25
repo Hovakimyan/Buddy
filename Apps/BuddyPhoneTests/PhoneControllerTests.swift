@@ -193,4 +193,57 @@ final class Accounts: Sendable {
         #expect(await controller.retrySelectionIfNeeded() == false)
         #expect(accounts.checks == 0)
     }
+
+    // MARK: Sample
+
+    @Test func theSampleShowsMadeUpRequestsAndSendsNothingToTheAccount() async throws {
+        let (controller, _) = controller(.available)
+        await controller.start()
+        await controller.showSample()
+        #expect(controller.isSample)
+        let model = try #require(controller.model)
+        #expect(await waitUntil { model.pendingApprovals.map(\.requestId) == [SampleCloud.approvalId] })
+        #expect(model.pendingQuestions.map(\.requestId) == [SampleCloud.questionId])
+        #expect(model.sessions.count == 3)
+        // Allowing it works (Face ID passes in the fake), and only the sample hears about it.
+        try await model.allow(SampleCloud.approvalId)
+        #expect(model.pendingApprovals.isEmpty)
+        #expect(transport.submitted.isEmpty)
+    }
+
+    @Test func leavingTheSampleChecksICloudAgainAndShowsTheAccount() async throws {
+        let (controller, accounts) = controller(.noAccount, .available)
+        await controller.start()
+        #expect(controller.model == nil)
+        await controller.showSample()
+        #expect(controller.isSample)
+        await controller.leaveSample()
+        #expect(!controller.isSample)
+        #expect(accounts.checks == 2)
+        #expect(controller.status == .on)
+        let model = try #require(controller.model)
+        transport.push(sessions: [SessionRecord(sessionId: "real", state: .working, project: "p", lastTool: nil, updatedAt: clock.now)])
+        #expect(await waitUntil { model.sessions.map(\.sessionId) == ["real"] })
+    }
+
+    @Test func aRealNotificationLeavesTheSample() async {
+        let (controller, _) = controller(.available)
+        await controller.start()
+        await controller.showSample()
+        let id = UUID()
+        await controller.handle(.review(id))
+        #expect(!controller.isSample)
+        #expect(controller.path == [.approval(id)])
+    }
+
+    @Test func theSampleWaitsForTheICloudCheck() async {
+        let (controller, _) = controller(.available)
+        // No launch check yet: nothing is running, so the sample may start; it is the only model.
+        await controller.showSample()
+        #expect(controller.isSample)
+        // A second tap does not replace it.
+        let first = controller.model
+        await controller.showSample()
+        #expect(controller.model === first)
+    }
 }

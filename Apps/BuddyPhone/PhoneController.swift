@@ -18,7 +18,7 @@ enum PhoneScreen: Hashable, Sendable {
 @Observable
 final class PhoneController {
     #if DEBUG
-    static let shared = PhoneController(selector: DemoCloud.isRequested ? DemoCloud.selector : .live)
+    static let shared = PhoneController(selector: SampleCloud.isRequested ? SampleCloud.selector : .live)
     #else
     static let shared = PhoneController()
     #endif
@@ -26,6 +26,8 @@ final class PhoneController {
     private(set) var status: PhoneCloudStatus = .checking
     /// Nil until the check finished, and when iCloud is not available (then the app shows `status`).
     private(set) var model: PhoneModel?
+    /// Whether `model` shows the sample (`showSample()`) instead of this Apple Account's sessions.
+    private(set) var isSample = false
     /// Whether this process should register for remote notifications (only with CloudKit running).
     private(set) var wantsRemoteNotifications = false
     /// The approval and question screens on the navigation stack (a notification opens one).
@@ -95,10 +97,42 @@ final class PhoneController {
         wantsRemoteNotifications = true
     }
 
+    // MARK: Sample
+
+    /// Swaps in made-up sessions, an approval and a question from an in-memory cloud, so the app can be tried without
+    /// a Mac. Allow, answers and messages work on the sample and go nowhere. Does nothing while the iCloud check runs.
+    func showSample() async {
+        guard !isSample, !isSelecting else { return }
+        let clock = clock
+        let connection = await SampleCloud.connection(now: clock())
+        model?.stop()
+        let model = PhoneModel(
+            transport: connection.transport, authenticator: authenticator, clock: { clock() }, refresh: connection.refresh)
+        model.start()
+        self.model = model
+        isSample = true
+        path = []
+    }
+
+    /// Back to this Apple Account's sessions: the iCloud check runs again, as at launch.
+    func leaveSample() async {
+        guard isSample else { return }
+        model?.stop()
+        model = nil
+        isSample = false
+        path = []
+        isSelecting = true
+        let task = Task { await self.select() }
+        startTask = task
+        await task.value
+    }
+
     // MARK: Notifications
 
     /// A tap on the approval notification or on one of its actions.
     func handle(_ route: NotificationRoute) async {
+        // A real notification is about this account's requests, never the sample's.
+        await leaveSample()
         switch route {
         case .review(let id):
             path = [.approval(id)]  // shown at once; the screen waits for the request to load

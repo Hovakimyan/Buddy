@@ -23,6 +23,10 @@ Do **not** put your Team ID in the repository. It is passed on the command line 
 3. Back on the App ID, edit iCloud and tick that container.
 4. Repeat for the iPhone App ID `com.sergeyhovakimyan.buddy.phone`: enable **iCloud** with **CloudKit** and tick the same container
    `iCloud.com.sergeyhovakimyan.buddy`, and enable **Push Notifications** (see section 8).
+5. The iPhone's notification service, App ID `com.sergeyhovakimyan.buddy.phone.notifications`: enable **iCloud** with
+   **CloudKit** and tick the same container (it reads the request a push is about to show its text). No push capability:
+   the app receives the push. The notification view, `com.sergeyhovakimyan.buddy.phone.notification-view`, needs no
+   capability.
 
 Letting Xcode do it also works: with `-allowProvisioningUpdates` (below) automatic signing creates the App ID,
 the container and the provisioning profile for you the first time.
@@ -101,25 +105,33 @@ Created automatically in Development; deploy it to Production before using a bui
 CloudKit Dashboard (https://icloud.developer.apple.com) > container `iCloud.com.sergeyhovakimyan.buddy` > Schema >
 **Deploy Schema Changes...** (Development to Production). Deploy again whenever a field is added.
 
+Before deploying, check in Schema > Record Types that Development has all six types with every field of the table
+below (a field appears only once a record carrying it was saved), and in Schema > Indexes the Queryable `recordName`
+index on each of them. A Development schema that is missing something is deployed missing it, and the Production apps
+then fail to save that record. To fill it in one sitting with the signed development builds: start a Claude Code session,
+answer a permission request and an `AskUserQuestion` question from the iPhone, and send a message from the session
+screen.
+
 All records live in the zone `Buddy` of the **private** database. A record name is unique per zone across record
 types, so the names are: `sessionId` for Session, `<requestId>` for Approval, `decision-<requestId>` for Decision,
-`<requestId>` for Question, `answer-<requestId>` for Answer. Saving the same record again replaces it (republish is
+`<requestId>` for Question, `answer-<requestId>` for Answer, `message-<messageId>` for Message. Saving the same record again replaces it (republish is
 an upsert); the phone's Decision and Answer are written once and the first one stands.
 
 | Record type | Plain fields | Encrypted fields (`encryptedValues`) |
 | --- | --- | --- |
-| `Session` | `sessionId` (String), `state` (String: idle, working, waiting, finished, error), `updatedAt` (Date), `agentCount` (Int64, running subagents) | `project` (String), `lastTool` (String, optional) |
+| `Session` | `sessionId` (String), `state` (String: idle, working, waiting, finished, error), `updatedAt` (Date), `agentCount` (Int64, running subagents), `awaitingMessage` (Int64, 0 or 1: Claude waits for a message from the phone) | `project` (String), `lastTool` (String, optional), `lastPrompt` and `lastReply` (String, `""` when there is none) |
 | `Approval` | `requestId` (String, UUID), `sessionId` (String), `status` (String: pending, resolved, expired), `createdAt` (Date), `expiresAt` (Date), `isTruncated` (Int(64), 0 or 1) | `tool` (String), `summary` (String) |
 | `Decision` | `requestId` (String, UUID), `decision` (String: allow, deny), `decidedAt` (Date), `source` (String: mac, phone) | none |
 | `Question` | `requestId` (String, UUID), `sessionId` (String), `status` (String: pending, resolved, expired), `createdAt` (Date), `expiresAt` (Date) | `questions` (Bytes: JSON of the question list, each with text, header, options and multiSelect) |
 | `Answer` | `requestId` (String, UUID), `answeredAt` (Date) | `responses` (Bytes: JSON of the chosen option labels, one list per question) |
+| `Message` | `messageId` (String, UUID), `sessionId` (String), `sentAt` (Date) | `text` (String, at most 2000 characters) |
 
 The Mac applies a Decision only if its `requestId` is currently pending and unexpired in the local queue, always
 records it as a phone decision whatever `source` says, and ignores everything else. It applies an Answer only if its
 `requestId` is a pending, unexpired question and the labels fit that question's options; anything else is ignored.
 Records that cannot be read (malformed JSON, wrong record type, missing fields) are skipped.
 
-Indexes: the subscriptions below need a **Queryable** index on `recordName` for `Question` and `Answer`, like
+Indexes: the subscriptions below need a **Queryable** index on `recordName` for `Question`, `Answer` and `Message`, like
 `Approval` and `Decision` (the Development schema adds it with the first record; add it in the Dashboard under
 Schema > Indexes before deploying to Production). Nothing else queries by field: records are read through the zone
 change feed.
@@ -139,6 +151,12 @@ Fixed subscription IDs, saved idempotently:
   content is ever in the push; the phone app fetches the encrypted record itself.
 - `buddy.answer.created` (saved by the **Mac**): `CKQuerySubscription` on `Answer`, fires on creation, silent push.
   It makes the Mac fetch the zone changes (Decisions and Answers come from the same feed).
+- `buddy.message.created` (saved by the **Mac**): `CKQuerySubscription` on `Message`, fires on creation, silent push.
+  The Mac types the message into the session's terminal or hands it to Claude through the `Stop` hook.
+
+The two alert subscriptions set `shouldSendMutableContent`, so the phone's notification service runs before iOS shows
+the alert: it fetches the encrypted record and replaces the fixed text with the real request (shown only while the
+phone is unlocked) and Buddy's picture.
 
 Pushes are an accelerator, not a requirement on the Mac: while at least one approval or question is pending and
 unexpired the Mac also polls the zone every 2 seconds, so decisions and answers arrive even if pushes do not. The phone refreshes the zone
@@ -151,7 +169,7 @@ that is created fresh, the phone can get one spurious "Claude Code needs approva
 
 ### Clean-up
 
-Every minute the Mac deletes Approval, Question, Decision and Answer records and orphaned Session records that the server last
+Every minute the Mac deletes Approval, Question, Decision, Answer and Message records and orphaned Session records that the server last
 modified more than 20 minutes ago (at most 200 per pass). Sessions the running Mac published are removed only when
 the session ends.
 
@@ -180,7 +198,7 @@ the session ends.
 | The signed app is killed at launch | The entitlements and the provisioning profile disagree: the container is not ticked on the App ID, or the build was signed ad-hoc with the cloud entitlements. Rebuild with `-allowProvisioningUpdates` and a real team. |
 | Phone link is on but the phone sees nothing | Check the Mac log: `log stream --predicate 'subsystem == "com.sergeyhovakimyan.buddy"'`. `notAuthenticated` is an iCloud sign-in problem, `permissionFailure` a container/profile problem. The phone must use the same Apple ID and container. |
 | `subscription save failed (will retry later)` in the log, right after the very first run | Expected once in the **Development** environment: a query subscription can only be saved after its record type exists. The Mac's `Decision` and `Answer` types are created by the first decision and the first answer the phone sends, and the phone's `Approval` and `Question` types by the first approval and the first question the Mac publishes; until then the save fails and is retried about once a minute. To avoid the wait, create the record types in the Dashboard (Schema > Record Types) or send one test approval and decision. |
-| `subscription save failed (will retry later)` persists | Push is not enabled for the App ID, or the Production schema lacks the record type (deploy it, step 5). If the message mentions an index, add a **Queryable** index on `recordName` for `Approval`, `Decision`, `Question` and `Answer` (Dashboard > Schema > Indexes) and deploy. Records still flow meanwhile; only the push speed-up is missing. |
+| `subscription save failed (will retry later)` persists | Push is not enabled for the App ID, or the Production schema lacks the record type (deploy it, step 5). If the message mentions an index, add a **Queryable** index on `recordName` for `Approval`, `Decision`, `Question`, `Answer` and `Message` (Dashboard > Schema > Indexes) and deploy. Records still flow meanwhile; only the push speed-up is missing. |
 | Works with an Apple Development signed build, not with a distribution-signed one | The Production schema was not deployed (step 5), or (Developer ID) `com.apple.developer.icloud-container-environment` is not set to `Production`. |
 
 ## 8. iPhone app (BuddyPhone)
