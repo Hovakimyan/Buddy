@@ -16,6 +16,11 @@
 		# beacon) from running, so "no analytics" in privacy.html stays true.
 		Content-Security-Policy "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 	}
+	# Pages, styles and scripts keep their names between releases, so browsers and Cloudflare must check for a new
+	# version (cheap, with the ETag) instead of keeping the old one for hours. Images change rarely.
+	@images path *.png *.svg
+	header @images Cache-Control "public, max-age=86400"
+	header ?Cache-Control "no-cache"
 	handle_errors 404 {
 		rewrite * /404.html
 		file_server

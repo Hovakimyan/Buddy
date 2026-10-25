@@ -199,7 +199,9 @@ work as well as the `.html` names. The App Store listing needs the site live fir
 proxy to Railway, so its SSL/TLS mode already works with Railway; do not change it to Flexible, which loops with "too
 many redirects". Two side effects of the proxy:
 
-- Cloudflare caches CSS and images. If a site change does not show, use **Caching > Configuration > Purge Everything**.
+- Cloudflare caches CSS, JS and images. `website/Caddyfile` sends `Cache-Control: no-cache` for pages, CSS and JS, so a
+  deploy shows at once; images are kept for a day. A copy Cloudflare cached before that header existed stays until it
+  expires: **Caching > Configuration > Purge Everything** clears it, or change the `?v=` on the link in `index.html`.
 - Email Address Obfuscation rewrites email addresses into "[email protected]" for visitors without JavaScript, so every
   `mailto:` link in `website/dist` sits between `<!--email_off-->` and `<!--/email_off-->`. Keep that for new ones.
 
