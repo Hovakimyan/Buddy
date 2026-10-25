@@ -81,3 +81,12 @@ html:not(.scroll-enabled) .scroll-story{height:100svh}html:not(.scroll-enabled) 
  .theater .title-wrap h1,.theater .scene-heading{font-size:38px}
  .theater .chapter-copy{min-height:120px}.theater .stage-bottom{bottom:55px}
 }
+/* Download in the opening scene: the title fades with the scene, so the link only takes clicks while it shows. */
+.hero-download{pointer-events:auto;display:inline-flex;gap:18px;align-items:center;margin-top:26px;background:var(--blue);color:#fff;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 10px 24px #3155eb33;transition:transform .3s var(--ease)}
+.hero-download:hover{transform:translateY(-3px)}.hero-download:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.hero-download svg{width:18px}
+.hero-note{display:block;margin-top:10px;font-size:12px;color:var(--muted)}
+.evening .hero-note{color:#cfc4b4}
+.theater:not([data-scene=desk]) .hero-download{pointer-events:none}
+@media(max-width:700px){.hero-download{margin-top:14px;padding:11px 15px;gap:12px;font-size:12px}.hero-note{font-size:11px;margin-top:6px}}
+@media(max-height:550px) and (min-width:701px){.hero-download{margin-top:12px}.hero-note{display:none}}

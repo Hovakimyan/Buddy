@@ -188,22 +188,31 @@ work as well as the `.html` names. The App Store listing needs the site live fir
 
 **Cloudflare, once** (dash.cloudflare.com > `ashoon.dev` > **DNS > Records > Add record**):
 
-1. **CNAME**: Name `buddy`, Target: the `*.up.railway.app` value Railway shows. Proxy status: **DNS only** (grey cloud).
+1. **CNAME**: Name `buddy`, Target: the `*.up.railway.app` value Railway shows for this service. Proxy status:
+   **Proxied** (orange cloud), like `ashoon.dev` and `staging-eu.ashoon.dev` in the same zone.
 2. **TXT**: the Name and Content exactly as Railway shows them. Both records are required: without the TXT the domain
    does not verify and returns 404.
 3. Back in Railway, wait for the green check next to the domain. Railway then issues the HTTPS certificate itself.
    Usually minutes; DNS can take longer.
 
-**DNS only or proxied.** Use DNS only (grey cloud): Railway handles HTTPS, and nothing else in the `ashoon.dev` zone
-changes. Turn on the proxy (orange cloud) only if you want Cloudflare's cache or protection. In that case Railway
-requires SSL/TLS mode **Full**, not Full (strict) and not Flexible, which loops with "too many redirects". That mode is
-set for the whole `ashoon.dev` zone, so check the other `ashoon.dev` sites first. To change it only for this site, use a
-Configuration Rule (Rules > Configuration Rules, hostname `buddy.ashoon.dev`, SSL: Full).
+**Proxied, as set up on 24 October 2026.** The zone already sends `ashoon.dev` and `staging-eu.ashoon.dev` through the
+proxy to Railway, so its SSL/TLS mode already works with Railway; do not change it to Flexible, which loops with "too
+many redirects". Two side effects of the proxy:
+
+- Cloudflare caches CSS and images. If a site change does not show, use **Caching > Configuration > Purge Everything**.
+- Email Address Obfuscation rewrites email addresses into "[email protected]" for visitors without JavaScript, so every
+  `mailto:` link in `website/dist` sits between `<!--email_off-->` and `<!--/email_off-->`. Keep that for new ones.
+
+- Cloudflare Web Analytics adds its beacon script to proxied pages. The privacy page promises no analytics, so the
+  `Content-Security-Policy` in `website/Caddyfile` lets only the site's own `script.js` run, and browsers block the
+  beacon (one CSP line in the console). Turning Web Analytics off for `buddy.ashoon.dev` in Cloudflare removes that line.
+
+The privacy page and the terms say Cloudflare delivers the site. If the proxy is ever turned off, update both.
 
 **Check:**
 
 ```sh
-dig +short buddy.ashoon.dev CNAME          # the *.up.railway.app target (DNS only)
+dig +short buddy.ashoon.dev                         # Cloudflare addresses (proxied)
 curl -sI https://buddy.ashoon.dev/ | head -1          # HTTP/2 200
 curl -sI https://buddy.ashoon.dev/privacy | head -1   # HTTP/2 200
 ```
