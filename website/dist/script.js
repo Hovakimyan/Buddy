@@ -4,6 +4,8 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const theater = $('.theater'), story = $('#scroll-story');
 document.documentElement.classList.add('scroll-enabled');
+// The app's Block (block.js). The notch and the phone show the sample session; the hero and the playroom can be petted.
+const blocks={};$$('[data-block]').forEach(canvas=>{const name=canvas.dataset.block;blocks[name]=BuddyBlock.mount(canvas,{state:{notch:'working',phone:'approval'}[name]||'idle',pill:name==='notch'||name==='phone',interactive:name==='hero'||name==='pet'});});
 const scenes = [
  {name:'desk',heading:'A little room<br>to build.',title:'Start something good.',description:'Claude does the coding. Buddy keeps your session in view, right by your Mac’s notch.',next:'Take a little break'},
  {name:'away',heading:'Go on.<br>Step away.',title:'Your desk can wait.',description:'The optional iPhone companion is designed to bring requests with you. This connection is still in testing.',next:'Bring up a request'},
@@ -30,6 +32,7 @@ function resetDecision(){
  decided=false;$$('[data-mirror]').forEach(b=>b.hidden=b.dataset.mirror==='replay');$('#phone-title').innerHTML='One little<br>decision.';$('#phone-description').textContent='Claude would like to run your build.';$('.phone-actions').hidden=false;$('#replay').hidden=true;
  $('#notch-title').textContent=step===0?'Claude is working.':'Your decision is needed.';$('#notch-subtitle').textContent=step===0?'I’ll keep an eye on things.':'A little check before the next step.';
  $('#terminal-status').innerHTML='<span class="terminal-prompt">›</span> Waiting for your next move.<b class="cursor"></b>';
+ blocks.notch.setState(step===0?'working':'approval');blocks.hero.setState(step===2?'approval':'idle');blocks.phone.setState('approval');
 }
 function renderScene(next, updateRange=true, announce=true){
  const changed=next!==step;step=next;$('#accessible-decisions').hidden=step!==2;const scene=scenes[step];theater.dataset.scene=scene.name;
@@ -87,29 +90,29 @@ $$('button[data-decision]').forEach(button=>button.addEventListener('click',()=>
  $('#notch-title').textContent=allowed?'Back to building.':'Request declined.';$('#notch-subtitle').textContent=allowed?'A little progress, a little peace.':'Your decisions stay yours.';
  $('#terminal-status').textContent=allowed?'› Sample build approved.':'› Sample build declined.';
  $('#chapter-title').textContent=allowed?'Good call. Keep going.':'A “no” is a decision, too.';$('#chapter-description').textContent='That was a simulation. In the app, your decision goes back to the waiting Claude Code session.';
+ ['notch','hero','phone'].forEach(name=>blocks[name].setState(allowed?'finished':'idle'));
  toast(allowed?'Approved. Now, where were we?':'No means no. Buddy gets it.');tone(allowed?'allow':'deny');
 }));
 $('#replay').addEventListener('click',()=>{resetDecision();$$('button[data-decision]').forEach(b=>b.disabled=false);$('#chapter-title').textContent=scenes[2].title;$('#chapter-description').textContent=scenes[2].description;$('[data-mirror="deny"]').focus({preventScroll:true});});
-$('#pet-hero').addEventListener('click',()=>{const greetings=['Oh, hi. I was hoping you’d do that.','Big idea? I’m all ears. Well… eyes.','Still here. Still rooting for you.'];toast(greetings[helloCount++%greetings.length]);$('#pet-hero').classList.remove('greeting');void $('#pet-hero').offsetWidth;$('#pet-hero').classList.add('greeting');$('#pet-hint').textContent='we’re friends now.';tone('hello');});
+$('#pet-hero').addEventListener('click',()=>{const greetings=['Oh, hi. I was hoping you’d do that.','Big idea? I’m all ears. Well… eyes.','Still here. Still rooting for you.'];toast(blocks.hero.click()?stateInfo.dizzy:greetings[helloCount++%greetings.length]);$('#pet-hint').textContent='we’re friends now.';tone('hello');});
 $('#light-toggle').addEventListener('click',()=>{const evening=theater.classList.toggle('evening');$('#light-toggle').setAttribute('aria-pressed',String(evening));$('#light-toggle').setAttribute('aria-label',evening?'Switch to daylight':'Switch to evening');tone();});
 function updateSound(){const button=$('#sound-toggle');button.setAttribute('aria-pressed',String(sound));button.setAttribute('aria-label',sound?'Turn sound off':'Turn sound on');button.querySelector('span').textContent=sound?'Sound on':'Sound off';}
 $('#sound-toggle').addEventListener('click',()=>{sound=!sound;updateSound();if(sound)tone('hello');});
-function updateMotion(){document.documentElement.classList.toggle('paused',paused);$('#motion-toggle').setAttribute('aria-pressed',String(paused));$('#motion-toggle').setAttribute('aria-label',paused?'Resume motion':'Pause motion');}
+function updateMotion(){document.documentElement.classList.toggle('paused',paused);BuddyBlock.setReduceMotion(paused);$('#motion-toggle').setAttribute('aria-pressed',String(paused));$('#motion-toggle').setAttribute('aria-label',paused?'Resume motion':'Pause motion');}
 $('#motion-toggle').addEventListener('click',()=>{paused=!paused;updateMotion();try{localStorage.setItem('buddy-motion',paused?'paused':'running');}catch{}});
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',event=>{if(event.matches){paused=true;updateMotion();}fitStage();});
 const stateInfo = {
- idle:['Ready for the next idea.','#5ca8ff',''],working:['Claude is working on your project.','#ffb32e','…'],thinking:['Thinking through the next step.','#ab87ff','…'],searching:['Looking around your project.','#2eccC7',''],approval:['A request needs your decision.','#ff7a24','!'],question:['Claude has a question for you.','#ff73bd','?'],error:['Something went wrong. Check the session.','#ef383d','!'],finished:['That part is done. Nice work.','#54d166','✓'],rateLimited:['Waiting on the agent’s rate limit.','#f5de52','…'],sleeping:['Quiet for a while. Time for a rest.','#6b75db','z'],dizzy:['Too many boops! Give me a moment.','#ccd1e0','↻']
+ idle:'Ready for the next idea.',working:'Claude is working on your project.',thinking:'Thinking through the next step.',searching:'Looking around your project.',approval:'A request needs your decision.',question:'Claude has a question for you.',error:'Something went wrong. Check the session.',finished:'That part is done. Nice work.',rateLimited:'Waiting on the agent’s rate limit.',sleeping:'Quiet for a while. Time for a rest.',dizzy:'Too many boops! Give me a moment.'
 };
 let emoteTimer;
 function setCharacterState(mood){
- clearTimeout(emoteTimer);const space=$('#pet-space');delete space.dataset.emote;space.classList.remove('happy');space.dataset.mood=mood;
- const [message,color,badge]=stateInfo[mood];$('#pet-speech').textContent=message;space.style.setProperty('--state-color',color);$('#state-badge').textContent=badge;
+ clearTimeout(emoteTimer);$('#pet-space').dataset.mood=mood;blocks.pet.setState(mood);$('#pet-speech').textContent=stateInfo[mood];
  $$('button[data-mood]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mood===mood)));
 }
 $$('button[data-mood]').forEach(button=>button.addEventListener('click',()=>{setCharacterState(button.dataset.mood);tone();}));
 $$('[data-emote]').forEach(button=>button.addEventListener('click',()=>{
- clearTimeout(emoteTimer);const space=$('#pet-space');space.dataset.emote=button.dataset.emote;$('#pet-speech').textContent=button.textContent+' — a little expression, then back to the session.';
- emoteTimer=setTimeout(()=>{delete space.dataset.emote;$('#pet-speech').textContent=stateInfo[space.dataset.mood][0];},2400);tone('hello');
+ clearTimeout(emoteTimer);blocks.pet.showEmote(button.dataset.emote);$('#pet-speech').textContent=button.textContent+' — a little expression, then back to the session.';
+ emoteTimer=setTimeout(()=>{$('#pet-speech').textContent=stateInfo[$('#pet-space').dataset.mood];},2400);tone('hello');
 }));
 setCharacterState('working');
 $$('[data-mirror]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.mirror==='replay')$('#replay').click();else $('button[data-decision="'+button.dataset.mirror+'"]').click();}));
@@ -123,8 +126,7 @@ function showFeature(name){activeFeature=name;$('#action-content').innerHTML=fea
 $$('[data-feature]').forEach(button=>button.addEventListener('click',()=>showFeature(button.dataset.feature)));
 $('#action-content').addEventListener('click',event=>{const button=event.target.closest('[data-answer]');if(!button)return;$('#action-feedback').textContent=button.dataset.answer;$('#action-reset').hidden=false;$$('#action-content button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));tone();});
 $('#action-reset').addEventListener('click',()=>{showFeature(activeFeature);$('#action-content button').focus({preventScroll:true});});showFeature('question');
-let petCount=0;$('#pet-button').addEventListener('click',()=>{const space=$('#pet-space');$('#pet-speech').textContent=space.dataset.mood==='sleeping'?'Five more minutes? Please?':['Oh. You’re my favorite human.','That counts as a little break.','Okay, back to making something great.'][petCount++%3];space.classList.remove('happy');void space.offsetWidth;space.classList.add('happy');tone('hello');});
-let pointerFrame=0;document.addEventListener('pointermove',event=>{if(paused||event.pointerType==='touch'||pointerFrame)return;pointerFrame=requestAnimationFrame(()=>{pointerFrame=0;document.documentElement.style.setProperty('--eye-x',((event.clientX/innerWidth-.5)*5)+'px');document.documentElement.style.setProperty('--eye-y',((event.clientY/innerHeight-.5)*5)+'px');});},{passive:true});
+let petCount=0;$('#pet-button').addEventListener('click',()=>{const dizzy=blocks.pet.click();$('#pet-speech').textContent=dizzy?stateInfo.dizzy:$('#pet-space').dataset.mood==='sleeping'?'Five more minutes? Please?':['Oh. You’re my favorite human.','That counts as a little break.','Okay, back to making something great.'][petCount++%3];tone('hello');});
 // Pause ambient animation when its scene is outside the viewport.
 const observer=new IntersectionObserver(entries=>entries.forEach(entry=>entry.target.classList.toggle('offstage',!entry.isIntersecting)),{rootMargin:'100px'});observer.observe(theater);observer.observe($('.playroom'));observer.observe($('.get-buddy'));
 const style=document.createElement('style');style.textContent='.offstage *{animation-play-state:paused!important}';document.head.append(style);

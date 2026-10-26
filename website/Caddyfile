@@ -12,8 +12,8 @@
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
-		# Only the site's own script.js and Cloudflare's Web Analytics beacon (described in privacy.html) run. A new
-		# analytics or other script host must be added here and to the privacy policy together.
+		# Only the site's own scripts (script.js, block.js) and Cloudflare's Web Analytics beacon (described in
+		# privacy.html) run. A new analytics or other script host must be added here and to the privacy policy together.
 		Content-Security-Policy "script-src 'self' https://static.cloudflareinsights.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 	}
 	# Pages, styles and scripts keep their names between releases, so browsers and Cloudflare must check for a new
