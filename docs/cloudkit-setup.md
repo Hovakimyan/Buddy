@@ -107,7 +107,8 @@ CloudKit Dashboard (https://icloud.developer.apple.com) > container `iCloud.com.
 
 Before deploying, check in Schema > Record Types that Development has all six types with every field of the table
 below (a field appears only once a record carrying it was saved), and in Schema > Indexes the Queryable `recordName`
-index on each of them. A Development schema that is missing something is deployed missing it, and the Production apps
+index on `Approval`, `Decision`, `Question`, `Answer` and `Message`. Development does **not** create that index by
+itself: add it by hand (Schema > Indexes > +, record type, type QUERYABLE, field `recordName`). A Development schema that is missing something is deployed missing it, and the Production apps
 then fail to save that record. To fill it in one sitting with the signed development builds: start a Claude Code session,
 answer a permission request and an `AskUserQuestion` question from the iPhone, and send a message from the session
 screen.
@@ -132,8 +133,9 @@ records it as a phone decision whatever `source` says, and ignores everything el
 Records that cannot be read (malformed JSON, wrong record type, missing fields) are skipped.
 
 Indexes: the subscriptions below need a **Queryable** index on `recordName` for `Question`, `Answer` and `Message`, like
-`Approval` and `Decision` (the Development schema adds it with the first record; add it in the Dashboard under
-Schema > Indexes before deploying to Production). Nothing else queries by field: records are read through the zone
+`Approval` and `Decision`. The Development schema does not add it by itself (seen on 18 November 2026: all five types
+had no `recordName` index after real use); add it in the Dashboard under Schema > Indexes before deploying to
+Production. Nothing else queries by field: records are read through the zone
 change feed.
 
 ### Subscriptions and pushes

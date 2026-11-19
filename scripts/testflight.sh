@@ -3,9 +3,10 @@
 # Archive BuddyPhone, export it for App Store Connect, verify the exported .ipa and upload it to TestFlight
 # (internal testers only).
 #
-# STATUS: written from Apple's documentation (xcodebuild -help and xcrun altool --help of this Xcode) and checked only
-# statically and with fake tools (scripts/test-phone.sh). It has NEVER run against a real developer account: there is
-# none yet (plan Task 17). Use --dry-run to see the exact commands, and --export-only to stop before the upload.
+# STATUS: first real runs on 18 November 2026 against the real developer account (Observed): archive, export with
+# automatic signing and the API key, the .ipa checks, the altool upload and App Store Connect processing all passed, for
+# an internal-only build and for an --app-store build. Use --dry-run to see the exact commands, and --export-only to
+# stop before the upload.
 #
 # Flow: archive -> check the archive -> `xcodebuild -exportArchive` (ExportOptions destination `export`, method
 # app-store-connect, distribution signing) into a local .ipa -> verify that .ipa (production push, Production CloudKit
@@ -23,15 +24,12 @@
 # says so explicitly). So no phone release entitlements file is needed, and verify_ipa checks the result on the real
 # output. (release.sh does the same for the Mac: development values at archive, Production at the Developer ID export.)
 #
-# STILL UNVERIFIED (needs the account): that automatic signing with the API key creates the cloud-managed
-# distribution certificate and App Store profile (use an Admin key); that the exported entitlements are what the
-# paragraph above says (verify_ipa fails loudly if not); that altool accepts these flags; that the App Store Connect app
-# record for com.sergeyhovakimyan.buddy.phone exists (create it once in App Store Connect > Apps, after the bundle ID exists:
-# run --export-only once first); that the upload is accepted (icon, privacy, export compliance:
-# ITSAppUsesNonExemptEncryption is already false); and that testFlightInternalTestingOnly is still honoured when the
-# verified .ipa is uploaded with altool (the option used to apply at upload time; now it only sits in the export of a
-# local .ipa and altool has no matching flag): after the first upload, App Store Connect must show the build as
-# Internal Only, otherwise use --upload-with xcodebuild.
+# Seen on the first real runs (18 November 2026): automatic signing with an Admin API key works; the exported
+# entitlements are what the paragraph above says (verify_ipa checks them every run); altool accepts these flags; and
+# testFlightInternalTestingOnly survives an altool upload (App Store Connect marks the build "Internal"). An internal-only
+# build cannot go to App Store review: upload the review build with --app-store. If altool says it cannot find the app
+# for the bundle ID although the record exists, an agreement is unsigned (App Store Connect > Business); after signing,
+# the API takes a few minutes to let the key in.
 #
 # Order on a fresh developer account: the archive is signed with a development profile, which Apple only creates when the
 # team has at least one registered device ("Your team has no devices from which to generate a provisioning profile").
@@ -71,15 +69,17 @@ Usage: scripts/testflight.sh [options]
 
 Archives BuddyPhone (Release, automatic signing with your team), exports it for App Store Connect (distribution
 signing) into a local .ipa, verifies that .ipa and uploads it to TestFlight. Meant for internal testers only: the export
-sets testFlightInternalTestingOnly, but whether that survives an altool upload has not been checked yet. After the first
-upload, check that App Store Connect shows the build as Internal Only (docs/releasing.md, "What has never been run",
-item 6); if it does not, upload again with --upload-with xcodebuild.
+sets testFlightInternalTestingOnly, and App Store Connect then marks the build Internal (seen on the first real upload).
+For the build that goes to App Store review, pass --app-store.
 
 Options:
   --build N         Build number, CURRENT_PROJECT_VERSION. Default: the current UTC time as YYYYMMDDHHMM, which only
                     ever grows. App Store Connect refuses a build number that is not higher than the last upload of
                     the same version.
   --version X.Y.Z   Marketing version (default: MARKETING_VERSION from Apps/project.yml).
+  --app-store       Leave out testFlightInternalTestingOnly, so the build can be submitted for App Store review (and
+                    offered to external testers). Without this option the build is internal testing only, and
+                    App Store Connect does not let such a build go to review.
   --export-only     Archive, export the signed .ipa into the output folder and verify it, but do not upload. The API
                     key is then optional. Recommended before the first real upload.
   --upload-with T   How the verified .ipa is uploaded: altool (default, xcrun altool --upload-app) or xcodebuild
@@ -112,6 +112,7 @@ USAGE
 VERSION=""
 BUILD_NUMBER=""
 EXPORT_ONLY=0
+INTERNAL_ONLY=1
 UPLOAD_WITH="altool"
 DRY_RUN=0
 OUT_DIR="${REPO_ROOT}/dist"
@@ -142,6 +143,10 @@ while [ $# -gt 0 ]; do
       ;;
     --export-only)
       EXPORT_ONLY=1
+      shift
+      ;;
+    --app-store)
+      INTERNAL_ONLY=0
       shift
       ;;
     --upload-with)
@@ -237,6 +242,10 @@ preflight() {
 
 # The ExportOptions.plist for -exportArchive. $1 is the destination: upload or export.
 emit_export_plist() {
+  local internal_only_entry=""
+  if [ "${INTERNAL_ONLY}" -eq 1 ]; then
+    internal_only_entry=$'\t<key>testFlightInternalTestingOnly</key>\n\t<true/>\n'
+  fi
   cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -252,9 +261,7 @@ emit_export_plist() {
 	<string>automatic</string>
 	<key>iCloudContainerEnvironment</key>
 	<string>Production</string>
-	<key>testFlightInternalTestingOnly</key>
-	<true/>
-	<key>manageAppVersionAndBuildNumber</key>
+${internal_only_entry}	<key>manageAppVersionAndBuildNumber</key>
 	<false/>
 	<key>uploadSymbols</key>
 	<true/>
@@ -413,12 +420,16 @@ print_summary() {
     return 0
   fi
   info "Uploaded BuddyPhone ${VERSION} (${BUILD_NUMBER}) to App Store Connect."
+  if [ "${INTERNAL_ONLY}" -eq 0 ]; then
+    printf '\nApp Store Connect now processes the build (a few minutes). This build is NOT internal testing only (--app-store):\nit can be selected for the App Store version and submitted for review.\n'
+    return 0
+  fi
   cat <<'NOTICE'
 
 App Store Connect now processes the build (a few minutes). Then open App Store Connect > your app > TestFlight, answer
 the export compliance question if it is asked (the app uses no non-exempt encryption) and check that the build shows as
-Internal Only (never verified for an altool upload; if it does not, add no testers and upload again with
---upload-with xcodebuild). Then add the internal testers. They install it from the TestFlight app on the iPhone.
+Internal. Then add the internal testers. They install it from the TestFlight app on the iPhone. This build cannot go
+to App Store review: for that, upload again with --app-store.
 NOTICE
 }
 
@@ -432,7 +443,7 @@ else
   info "Buddy TestFlight ${VERSION} (${BUILD_NUMBER}): ${mode}"
 fi
 [ "${BUILD_FROM_TIME}" -eq 0 ] || info "Build number from the UTC time (use --build N to choose one)."
-warn "This script has not been tested against a real developer account or App Store Connect yet (see the header of the script)."
+[ "${UPLOAD_WITH}" != "xcodebuild" ] || warn "--upload-with xcodebuild has not been tested against App Store Connect yet (the default upload has)."
 
 preflight
 if [ "${DRY_RUN}" -eq 0 ]; then

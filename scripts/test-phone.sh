@@ -587,7 +587,12 @@ assert_lacks "testflight dry-run never prints the team id" "${OUT}" "${FAKE_TEAM
 assert_lacks "testflight dry-run never prints the key id" "${OUT}" "${FAKE_KEY_ID}"
 assert_lacks "testflight dry-run never prints the issuer id" "${OUT}" "${FAKE_ISSUER}"
 assert_lacks "testflight dry-run never prints the key path" "${OUT}" "${KEY}"
-assert_has "testflight dry-run: says it is untested" "${OUT}" "not been tested"
+assert_lacks "testflight dry-run: the altool upload is no longer called untested" "${OUT}" "not been tested"
+
+run_case "${TEAM}" "${ASC[@]}" -- "${FLIGHT}" --dry-run --app-store --build 78 --out-dir "${WORK}/tf-dry"
+assert_rc "testflight --dry-run --app-store exits 0" 0
+assert_lacks "testflight dry-run --app-store: plist is not internal testing only" "${OUT}" "testFlightInternalTestingOnly"
+assert_has "testflight dry-run --app-store: plist still keeps our build number" "${OUT}" "<key>manageAppVersionAndBuildNumber</key>"$'\n'"      | 	<false/>"
 
 # the dry-run plist is a valid property list
 # (the printed plist shows the masked team as <BUDDY_TEAM_ID>, which is not valid XML text: put a stand-in back)

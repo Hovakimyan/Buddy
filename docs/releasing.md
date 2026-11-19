@@ -4,9 +4,9 @@ How to turn this repository into the two things colleagues install: a notarized 
 TestFlight build for the iPhone. Colleagues follow [`installing.md`](installing.md). Script details and every flag:
 [`scripts/README.md`](../scripts/README.md). Portal and CloudKit details: [`cloudkit-setup.md`](cloudkit-setup.md).
 
-**Status.** The unsigned dmg path is built and checked on a machine with no Apple account. Signing, notarization, the
-TestFlight export and upload, the real iPhone link and the first-run setup window have never run on a real account or
-device (see "What has never been run" at the end). Expect to fix small things on the first real run. Never put your Team ID,
+**Status.** Signing, notarization, the TestFlight export and upload, the CloudKit Production deploy and the real iPhone
+link have run on the real account (24 October and 18 November 2026). What was seen and what is still unchecked is in
+"First real runs" at the end. Never put your Team ID,
 the API key file, its key id or its issuer id in a file in this repository: they go in environment variables only.
 
 **Audience.** Public: anyone can download the notarized dmg from the website (GitHub Releases), and the iPhone app goes
@@ -108,7 +108,8 @@ export BUDDY_TEAM_ID=<YOUR_TEAM_ID>
 export BUDDY_ASC_KEY_PATH=<path to AuthKey_KEYID.p8> BUDDY_ASC_KEY_ID=<KEYID> BUDDY_ASC_ISSUER_ID=<ISSUER_ID>
 scripts/testflight.sh --dry-run             # prints every command, secrets masked
 scripts/testflight.sh --export-only         # archive, export a signed .ipa, verify it, do NOT upload
-scripts/testflight.sh                       # archive, export, verify, upload that .ipa with xcrun altool
+scripts/testflight.sh                       # archive, export, verify, upload that .ipa with xcrun altool (internal testers only)
+scripts/testflight.sh --app-store           # the same, without the internal-only flag: the build for App Store review
 ```
 
 Run `--export-only` first on the first run (setup step 7), then upload. The default build number is the UTC time `YYYYMMDDHHMM`; it only grows, and App Store Connect
@@ -147,7 +148,8 @@ App Review Information > Notes:
 - [ ] An approval end to end: Allow, Deny and Always on the Mac card; then from the iPhone (Deny from the lock screen, Allow
       with Face ID). The menu says "Phone link on". `docs/e2e-checklist.md` lists the rest, with a result column.
 - [ ] Open from Downloads: **Move Buddy to Applications?** appears, moving works, and **Open Buddy at login** takes effect.
-- [ ] In App Store Connect the TestFlight build is marked **Internal Only** (see "What has never been run", item 6).
+- [ ] In App Store Connect the TestFlight build is marked **Internal**; the build for review is a second upload with
+      `--app-store`.
 - [ ] The TestFlight build installs on an iPhone of a colleague who is an internal tester.
 
 ## Where to host the dmg
@@ -239,27 +241,43 @@ custom domain in Railway, and the DNS record together.
   release. iPhone: the UTC time by default; never go back to small numbers after using it.
 - Updating a colleague's Mac is a new dmg over the old app (`installing.md`, "Update Buddy").
 
-## What has never been run
+## First real runs: what was seen, what is still open
 
-No signed or notarized build, TestFlight upload or real-device check has run: there was no paid account when this was
-written. First real run, expect and check:
+Seen on the real developer account (Observed unless marked):
 
-1. `release.sh` signed mode, first real run on 24 October 2026 (Observed): the archive, the Developer ID export and every
-   pre-notarization check pass, and the app, `buddy-hook` and the dmg are signed by the Developer ID certificate with a
-   secure timestamp and the hardened runtime. Two fixes came out of it: the export signs manually with the Developer ID
-   profile (automatic signing with the API key fails with "Cloud signing permission error"), and the checks no longer
-   pipe into `grep -q`, which under `pipefail` failed good signatures (SIGPIPE, exit 141). Still to watch: notarization
-   time on a new team, and stapling.
-2. `testflight.sh`: that automatic signing with the API key creates the distribution certificate and App Store profile, that
-   the exported `.ipa` really has `aps-environment` `production` and the Production container environment (the script checks
-   it), and that `xcrun altool --upload-app` accepts the flags (fallback: `--upload-with xcodebuild`).
-3. `phone-signed-build.sh`: the device list of a real iPhone (only a simulator was inspected; `--device` bypasses it) and
+1. `release.sh` signed mode, 24 October 2026: the archive, the Developer ID export and every pre-notarization check pass.
+   Two fixes came out of it: the export signs manually with the Developer ID profile (automatic signing with the API key
+   fails with "Cloud signing permission error"), and the checks no longer pipe into `grep -q`, which under `pipefail`
+   failed good signatures (SIGPIPE, exit 141). The published `Buddy-1.0.0.dmg` is accepted by Gatekeeper as
+   "Notarized Developer ID" (`spctl`, 18 November 2026).
+2. `testflight.sh`, 18 November 2026: automatic signing with the Admin API key, the exported `.ipa` (`aps-environment`
+   `production`, Production container environment) and `xcrun altool --upload-app` all work. App Store Connect accepted
+   and processed both uploads in a few minutes.
+3. `testFlightInternalTestingOnly` survives an altool upload: App Store Connect marks the build **Internal**. Such a
+   build cannot go to App Store review, so the review build is uploaded with `--app-store`.
+4. The CloudKit Production schema was deployed on 18 November 2026, after adding the Queryable `recordName` index by hand
+   to `Approval`, `Decision`, `Question`, `Answer` and `Message` (Development had not created it:
+   `docs/cloudkit-setup.md`). Until that deploy, no released build could link Mac and iPhone.
+5. The Mac and iPhone link over Production iCloud works with the released Mac app and the TestFlight build (Reported by
+   the maintainer, 18 November 2026).
+6. Version 1.0.0 was submitted for App Store review on 18 November 2026, with manual release.
+
+Two traps from that day:
+
+- **A pending agreement blocks the API.** `altool` then says it cannot find the app for the bundle ID, although the
+  record exists; the App Store Connect API answers `FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED`. Accept the
+  agreements (developer.apple.com/account and App Store Connect > Business); the API let the key in about four
+  minutes later.
+- **A development build of the Mac app cannot talk to a TestFlight or App Store iPhone app.** The development build
+  uses the CloudKit Development environment, the released apps use Production. Install the released dmg to test.
+
+Still never run or not checked:
+
+1. `phone-signed-build.sh`: the device list of a real iPhone (only a simulator was inspected; `--device` bypasses it) and
    `devicectl device install app`.
-4. That App Store Connect accepts the upload (icon, privacy answers, export compliance) and processes it.
-5. The CloudKit Production schema deploy, and the real iCloud, push and Face ID paths (`docs/e2e-checklist.md`).
-6. **`testFlightInternalTestingOnly` is still honoured when uploading with altool.** It used to apply at upload time; now it
-   only sits in the export options of a local `.ipa`, and altool has no matching flag. After the first upload, App Store
-   Connect must show the build as Internal Only. If it does not, do not add testers: upload with `--upload-with xcodebuild`.
-7. The first-run setup window ("Set up Buddy"), the Move to Applications prompt on a real download, and Open at login on a real Mac
-   (`docs/e2e-checklist.md` M9 to M11).
-8. That Gatekeeper opens the notarized dmg without the Open Anyway step.
+2. `testflight.sh --upload-with xcodebuild`.
+3. Push notifications and Face ID on the real device, and the rest of `docs/e2e-checklist.md` (its result column is
+   still empty).
+4. The first-run setup window ("Set up Buddy"), the Move to Applications prompt on a real download, and Open at login on
+   a real Mac (`docs/e2e-checklist.md` M9 to M11).
+5. That a browser download of the dmg on a clean macOS user opens without the Open Anyway step.
